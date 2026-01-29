@@ -5,7 +5,8 @@
 
 
 ## Original Goals for the Week
-{COPY LAST WEEK}
+
+- N/A since this is the first week.
 
 
 ## Progress and Issues
@@ -20,12 +21,13 @@
 ## Questions for the Product Owner
 *List any questions for your TA to be discussed in your Thursday project meeting.*
 
+- What level of specificity is needed in our design section? Should our classes have known concrete interfaces, or simply known behavior?
+
 
 ## Goals for Next Week
 *Outline your plans and goals for the following week. Each bullet point should include a measurable task and a time estimate (no longer than a week). We recommend that you label these with the student(s) who is responsible for the item.*
 
 Have the architecture and design nailed down so we can start working on the code.
-- Software architecture (40%):
-- Software design (30%):
-- Coding guidelines (10%):
-- Process descriptions (20%):
+- The team agreed to have a long meeting on Sunday (02/01/2026) to work on architecture and design.
+- 6 members are divided into 3 pairs to tackle coding guidelines and process descriptions before the meeting.
+- Members will cross-check each other’s parts before grouping again on Tuesday (02/03/2026) to finalize Milestone 3 and write the status report.
