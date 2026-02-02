@@ -1,17 +1,12 @@
 ## High Level Goal
-*Describe in one line the overarching goal of your next release, which may take multiple weeks to achieve. Example: Develop frontend to backend working software for the Beta Release, showcasing feature X. This serves to keep everyone aligned with the overall vision to which you're working.*
-
-- Develop frontend-to-backend production-ready software for the Beta Release, demonstrating efficient delivery routing.
+Develop frontend-to-backend production-ready software for the Beta Release, demonstrating efficient delivery routing.
 
 
 ## Original Goals for the Week
-
-- N/A since this is the first week.
+N/A since this is the first week.
 
 
 ## Progress and Issues
-*Report on progress and issues: what you did, what worked, what you learned, where you had trouble, and where you are blocked.*
-
 - We created a document detailing the requirements and plan for our project.
 - We created a Discord channel to communicate more easily and schedule meetings outside the designated class time to coordinate our work.
 - We had a miscommunication about the meeting time, so not all team members were available on the call. Since then, we have established a clear schedule and reminded everyone to communicate any scheduling conflicts.
@@ -19,15 +14,17 @@
 
 
 ## Questions for the Product Owner
-*List any questions for your TA to be discussed in your Thursday project meeting.*
-
-- What level of specificity is needed in our design section? Should our classes have known concrete interfaces, or simply known behavior?
+What level of specificity is needed in our design section? Should our classes have known concrete interfaces, or simply known behavior?
 
 
 ## Goals for Next Week
-*Outline your plans and goals for the following week. Each bullet point should include a measurable task and a time estimate (no longer than a week). We recommend that you label these with the student(s) who is responsible for the item.*
-
-Have the architecture and design nailed down so we can start working on the code.
+- Have the architecture and design nailed down so we can start working on the code.
 - The team agreed to have a long meeting on Sunday (02/01/2026) to work on architecture and design.
 - 6 members are divided into 3 pairs to tackle coding guidelines and process descriptions before the meeting.
 - Members will cross-check each other’s parts before grouping again on Tuesday (02/03/2026) to finalize Milestone 3 and write the status report.
+
+The structure of the pairs is as follow:
+- H and Emily are responsible for Coding Guidelines.
+- Ben and Zane are responsible for Risk Assessment and Project Scheduler.
+- Delano and Qalid are responsible for Test Plans & Bugs and Documentation Plan.
+- We leave team structure as is for now.
