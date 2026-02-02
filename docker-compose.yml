@@ -24,7 +24,7 @@ services:
     ports:
       # Expose Postgres to the host machine
       # host_port:container_port
-      - "5432:5432"
+      - "5433:5432"
       # Your app connects via localhost:5432
 
     volumes:
