@@ -1,0 +1,45 @@
+version: "3.9" # Compose file format version (safe default)
+
+services:
+  # This service runs our local Postgres database
+  db:
+    image: postgres:16
+    # Use the official Postgres image, version 16
+    # Everyone on the team should use the same version
+
+    container_name: batchable-postgres
+    # Fixed name so we can easily run:
+    # docker exec -it batchable-postgres psql ...
+
+    restart: unless-stopped
+    # Automatically restart the DB if Docker restarts
+
+    environment:
+      # These variables are read by the Postgres image
+      # on FIRST startup to initialize the database
+      POSTGRES_USER: app_user        # database username
+      POSTGRES_PASSWORD: app_password # database password
+      POSTGRES_DB: appdb             # default database name
+
+    ports:
+      # Expose Postgres to the host machine
+      # host_port:container_port
+      - "5432:5432"
+      # Your app connects via localhost:5432
+
+    volumes:
+      # Persist database data on your machine
+      # Without this, all data disappears when the container is removed
+      - pgdata:/var/lib/postgresql/data
+
+    healthcheck:
+      # Lets Docker know when Postgres is ready to accept connections
+      test: ["CMD-SHELL", "pg_isready -U app_user -d appdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+# Named volumes live outside containers
+# Docker manages them automatically
+volumes:
+  pgdata:
