@@ -5,3 +5,9 @@ Our product is Batchable, a real-time food delivery batching system. It works as
 The directory so far has only a section for our weekly status reports. We will update this file as we add more sections. 
 
 A link to our requirements and plan can be found here: https://docs.google.com/document/d/1lBQPrSYdc8PdP-THlGFKEYEQGw-icpVO-P4352XmHsA/edit?usp=sharing
+
+# How to run the backend
+
+How to run dev backend server locally:
+./mvnw spring-boot:run
+
