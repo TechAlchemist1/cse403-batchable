@@ -1,87 +1,33 @@
-# Welcome to React Router!
+# Welcome to the Batchable Front-end!
+We are using the following tools for this client side portion of the codebase, so here are some quick links to relevant sites:
+* [Vite](https://vite.dev/)
+* [React Router](https://reactrouter.com/)
+* [React](https://react.dev/)
+* [TypeScript](https://www.typescriptlang.org/)
+* [Tailwind CSS](https://tailwindcss.com/)
 
-A modern, production-ready template for building full-stack React applications using React Router.
+In a less code-related sense, we also depend on [gts](https://github.com/google/gts), which automatically enforces the [Google TypeScript Style Guide](https://google.github.io/styleguide/tsguide.html). More on how to use this in the next section.
 
-[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/remix-run/react-router-templates/tree/main/default)
+## Common Automated Operations
+`npm` scripts are the primary way for setting up automated tasks in this project, of which there are only a few:
+* `npm run dev`, which will start the front-end in development mode (with HMR!), without the server. This is likely to only work for the first week, right up until we need to depend on the back-end APIs.
+* `npm run lint`, which will run the linter and formatter without changing any files, and produce a list of all the violations it found.
+* `npm run fix`, which is just like `lint` except it also tries to fix as much as it can. Please run this before committing code.
 
-## Features
+## Project Setup: So you've just pulled...
+Just `cd frontend`, `npm install`, and you're ready to go!
 
-- 🚀 Server-side rendering
-- ⚡️ Hot Module Replacement (HMR)
-- 📦 Asset bundling and optimization
-- 🔄 Data loading and mutations
-- 🔒 TypeScript by default
-- 🎉 TailwindCSS for styling
-- 📖 [React Router docs](https://reactrouter.com/)
+## Editor Setup
 
-## Getting Started
-
-### Installation
-
-Install the dependencies:
-
-```bash
-npm install
+### VSCode
+Installing the extensions for [ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint) and [Prettier](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode) will make the linter much more friendly. Getting Prettier to work properly may require adding a line in `.vscode/settings.json`:
+```json
+"[javascript][typescript][typescriptreact]": {
+  "editor.defaultFormatter": "esbenp.prettier-vscode"
+}
 ```
 
-### Development
+The command "Format Document" (Alt + Shift + F) will run the formatting portion of `npm run fix`.
 
-Start the development server with HMR:
-
-```bash
-npm run dev
-```
-
-Your application will be available at `http://localhost:5173`.
-
-## Building for Production
-
-Create a production build:
-
-```bash
-npm run build
-```
-
-## Deployment
-
-### Docker Deployment
-
-To build and run using Docker:
-
-```bash
-docker build -t my-app .
-
-# Run the container
-docker run -p 3000:3000 my-app
-```
-
-The containerized application can be deployed to any platform that supports Docker, including:
-
-- AWS ECS
-- Google Cloud Run
-- Azure Container Apps
-- Digital Ocean App Platform
-- Fly.io
-- Railway
-
-### DIY Deployment
-
-If you're familiar with deploying Node applications, the built-in app server is production-ready.
-
-Make sure to deploy the output of `npm run build`
-
-```
-├── package.json
-├── package-lock.json (or pnpm-lock.yaml, or bun.lockb)
-├── build/
-│   ├── client/    # Static assets
-│   └── server/    # Server-side code
-```
-
-## Styling
-
-This template comes with [Tailwind CSS](https://tailwindcss.com/) already configured for a simple default starting experience. You can use whatever CSS framework you prefer.
-
----
-
-Built with ❤️ using React Router.
+### IntelliJ
+*Others, please add subsections for your optimal editor setups, I only know one*
