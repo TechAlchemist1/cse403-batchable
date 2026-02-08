@@ -5,10 +5,10 @@ import com.batchable.backend.client.GoogleRoutesClient;
 
 // DTOs used to build requests and return responses
 import com.batchable.backend.model.dto.*;
-
+import tools.jackson.databind.ObjectMapper;
 // Marks this class as a Spring service (business logic layer)
 import org.springframework.stereotype.Service;
-
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -21,29 +21,24 @@ public class RouteService {
     /**
      * Constructor injection:
      *
-     * Spring automatically provides a GoogleRoutesClient
-     * because it is annotated with @Service.
+     * Spring automatically provides a GoogleRoutesClient because it is annotated with @Service.
      */
     public RouteService(GoogleRoutesClient routesClient) {
         this.routesClient = routesClient;
     }
 
     /**
-     * Business-level method for getting directions
-     * between two locations.
+     * Business-level method for getting directions between two locations.
      *
-     * This method:
-     * - translates simple inputs (Strings)
-     * - into a structured DirectionsRequest DTO
-     * - sets default business rules (e.g., travel mode)
-     * - delegates the API call to the client
+     * This method: - translates simple inputs (Strings) - into a structured DirectionsRequest DTO -
+     * sets default business rules (e.g., travel mode) - delegates the API call to the client
      */
     public DirectionsResponse getDirections(String from, String to) {
 
         // Build the request object expected by Google Routes
         DirectionsRequest req = new DirectionsRequest();
-        req.setOrigin(from);
-        req.setDestination(to);
+        req.setOrigin(new Waypoint(from));
+        req.setDestination(new Waypoint(to));
 
         // Business decision:
         // We currently only support driving directions
@@ -54,25 +49,31 @@ public class RouteService {
     }
 
     /**
-     * Business-level method for computing a distance matrix
-     * between multiple origins and destinations.
+     * Business-level method for computing a distance matrix between multiple origins and
+     * destinations.
      *
-     * This method hides Google-specific request details
-     * from the controller.
+     * This method hides Google-specific request details from the controller.
      */
-    public DistanceMatrixResponse getDistanceMatrix(
-            List<String> origins,
-            List<String> destinations
-    ) {
+    public DistanceMatrixResponse getDistanceMatrix(List<String> origins,
+            List<String> destinations) {
         // Build the request DTO expected by Google
         DistanceMatrixRequest req = new DistanceMatrixRequest();
-        req.setOrigins(origins);
-        req.setDestinations(destinations);
+        req.setOrigins(addressListDistanceMatrixLocationList(origins));
+        req.setDestinations(addressListDistanceMatrixLocationList(destinations));
 
         // Centralized business rule for travel mode
         req.setTravelMode("DRIVE");
 
         // Delegate the API call
         return routesClient.getDistanceMatrix(req);
+    }
+
+    private List<DistanceMatrixLocation> addressListDistanceMatrixLocationList(
+            List<String> addresses) {
+        List<DistanceMatrixLocation> ret = new ArrayList<DistanceMatrixLocation>();
+        for (String address : addresses) {
+            ret.add(new DistanceMatrixLocation(new Waypoint(address)));
+        }
+        return ret;
     }
 }

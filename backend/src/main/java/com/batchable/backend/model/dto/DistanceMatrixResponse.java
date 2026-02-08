@@ -1,54 +1,115 @@
 package com.batchable.backend.model.dto;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * DTO (Data Transfer Object) representing the response from the Google Distance Matrix API.
+ * Represents a processed distance matrix from Google.
  *
- * Responsibilities: - Holds the computed distances and durations between multiple origins and
- * destinations. - Used by the service/controller layer to return JSON to clients. - Can be
- * serialized/deserialized automatically by Spring (via Jackson).
+ * Internally stores the raw Google response but provides a simple 2D int array for either
+ * distanceMeters or durationSeconds.
  */
 public class DistanceMatrixResponse {
 
-  /**
-   * distancesMeters[i][j] = distance from origins[i] to destinations[j] in meters.
-   * This allows the service/controller to know distances for all origin-destination pairs.
-   */
-  private List<List<Integer>> distancesMeters;
+  private List<MatrixElement> elements = new ArrayList<>();
+
+  // Simplified 2D matrix view
+  private int[][] matrix;
 
   /**
-   * durationsSeconds[i][j] = travel time from origins[i] to destinations[j] in seconds.
-   * 
-   * Example: durationsSeconds = [ [900, 1200], // Seattle → Bellevue, Seattle → Kirkland [600, 900]
-   * // Redmond → Bellevue, Redmond → Kirkland ]
+   * Constructs a DistanceMatrixResponse from Google response elements and converts to a 2D matrix
+   * of weights.
    *
-   * Useful for computing travel times, ETAs, or sorting by fastest route.
+   * @param elements The raw Google matrix elements
+   * @param useDistance If true, matrix entries = duration in seconds; otherwise distance in meters
    */
-  private List<List<Integer>> durationsSeconds;
+  public DistanceMatrixResponse(List<MatrixElement> elements, boolean useTime) {
+    this.elements = elements;
 
-  /**
-   * Default constructor required by Spring / Jackson for JSON deserialization.
-   */
-  public DistanceMatrixResponse() {}
+    // Determine the size of the matrix
+    int maxOrigin = elements.stream().mapToInt(MatrixElement::getOriginIndex).max().orElse(-1);
+    int maxDest = elements.stream().mapToInt(MatrixElement::getDestinationIndex).max().orElse(-1);
 
-  /** Getter for distances in meters */
-  public List<List<Integer>> getDistancesMeters() {
-    return distancesMeters;
+    matrix = new int[maxOrigin + 1][maxDest + 1];
+
+    // Fill matrix
+    for (MatrixElement e : elements) {
+      int value;
+      if (!useTime) {
+        value = e.getDistanceMeters();
+      } else {
+        // Convert duration string (e.g. "1290s") to int seconds
+        String durationString = e.getDuration().substring(0, e.getDuration().length() - 1);
+        value = Integer.parseInt(durationString);
+      }
+      matrix[e.getOriginIndex()][e.getDestinationIndex()] = value;
+    }
   }
 
-  /** Setter for distances in meters */
-  public void setDistancesMeters(List<List<Integer>> distancesMeters) {
-    this.distancesMeters = distancesMeters;
+  public int[][] getMatrix() {
+    return matrix;
   }
 
-  /** Getter for durations in seconds */
-  public List<List<Integer>> getDurationsSeconds() {
-    return durationsSeconds;
+  public List<MatrixElement> getElements() {
+    return elements;
   }
 
-  /** Setter for durations in seconds */
-  public void setDurationsSeconds(List<List<Integer>> durationsSeconds) {
-    this.durationsSeconds = durationsSeconds;
+  public void setElements(List<MatrixElement> elements) {
+    this.elements = elements;
+  }
+
+  public void setMatrix(int[][] matrix) {
+    this.matrix = matrix;
+  }
+
+  /** Matches one element of the Google Route Matrix response */
+  public static class MatrixElement {
+    private int originIndex;
+    private int destinationIndex;
+    private int distanceMeters;
+    private String duration;
+    private String condition;
+
+    public MatrixElement() {}
+
+    public int getOriginIndex() {
+      return originIndex;
+    }
+
+    public void setOriginIndex(int originIndex) {
+      this.originIndex = originIndex;
+    }
+
+    public int getDestinationIndex() {
+      return destinationIndex;
+    }
+
+    public void setDestinationIndex(int destinationIndex) {
+      this.destinationIndex = destinationIndex;
+    }
+
+    public int getDistanceMeters() {
+      return distanceMeters;
+    }
+
+    public void setDistanceMeters(int distanceMeters) {
+      this.distanceMeters = distanceMeters;
+    }
+
+    public String getDuration() {
+      return duration;
+    }
+
+    public void setDuration(String duration) {
+      this.duration = duration;
+    }
+
+    public String getCondition() {
+      return condition;
+    }
+
+    public void setCondition(String condition) {
+      this.condition = condition;
+    }
   }
 }

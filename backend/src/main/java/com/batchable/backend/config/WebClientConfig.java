@@ -15,6 +15,15 @@ import org.springframework.beans.factory.annotation.Value;
 public class WebClientConfig {
 
   /**
+   * Provide a WebClient.Builder bean explicitly. This ensures Spring can inject it into other
+   * beans.
+   */
+  @Bean
+  public WebClient.Builder webClientBuilder() {
+    return WebClient.builder();
+  }
+
+  /**
    * This method defines a Spring Bean.
    *
    * - Spring will call this method once at startup - The returned WebClient object is stored in the

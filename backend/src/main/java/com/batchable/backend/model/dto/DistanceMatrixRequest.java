@@ -6,58 +6,59 @@ import java.util.List;
  * DTO (Data Transfer Object) representing a request to the Google Distance Matrix API.
  *
  * Responsibilities: - Holds the origins and destinations for which travel distances and durations
- * should be computed. - Used by GoogleRoutesClient to serialize into JSON and send to the Google
- * API.
+ * should be computed. - Uses Waypoint objects for type safety and clarity. - Serialized by
+ * GoogleRoutesClient into JSON for API requests.
  */
 public class DistanceMatrixRequest {
 
-  // List of starting points (addresses, cities, or coordinates)
-  // Example: ["Seattle, WA", "Redmond, WA"]
-  private List<String> origins;
+  // Represents starting points (addresses, cities, or coordinates), where 
+  // each address is wrapped in a Waypoint which is wrapped in a DistanceMatrixLocation
+  // as per the google routematrix API.
+  // Example: [new DistanceMatrixLocation(new Waypoint("Seattle, WA")),
+  // new DistanceMatrixLocation(new Waypoint("Redmond, WA"))]
+  private List<DistanceMatrixLocation> origins;
 
-  // List of ending points (addresses, cities, or coordinates)
-  // Example: ["Bellevue, WA", "Kirkland, WA"]
-  private List<String> destinations;
+  // Represents ending points (addresses, cities, or coordinates).
+  private List<DistanceMatrixLocation> destinations;
 
   // Travel mode: "DRIVE", "WALK", "BICYCLE", "TRANSIT"
   // Determines how travel distances and times are calculated
   private String travelMode;
 
-  /**
-   * Default constructor required by Spring / Jackson for JSON deserialization.
-   */
+  /** Default constructor required by Spring / Jackson for JSON deserialization. */
   public DistanceMatrixRequest() {}
 
   /**
    * Convenience constructor to quickly create a DistanceMatrixRequest.
    *
-   * @param origins List of starting points
-   * @param destinations List of ending points
+   * @param origins List of starting Waypoints
+   * @param destinations List of ending Waypoints
    * @param travelMode Mode of travel
    */
-  public DistanceMatrixRequest(List<String> origins, List<String> destinations, String travelMode) {
+  public DistanceMatrixRequest(List<DistanceMatrixLocation> origins,
+      List<DistanceMatrixLocation> destinations, String travelMode) {
     this.origins = origins;
     this.destinations = destinations;
     this.travelMode = travelMode;
   }
 
   /** Getter for origins */
-  public List<String> getOrigins() {
+  public List<DistanceMatrixLocation> getOrigins() {
     return origins;
   }
 
   /** Setter for origins */
-  public void setOrigins(List<String> origins) {
+  public void setOrigins(List<DistanceMatrixLocation> origins) {
     this.origins = origins;
   }
 
   /** Getter for destinations */
-  public List<String> getDestinations() {
+  public List<DistanceMatrixLocation> getDestinations() {
     return destinations;
   }
 
   /** Setter for destinations */
-  public void setDestinations(List<String> destinations) {
+  public void setDestinations(List<DistanceMatrixLocation> destinations) {
     this.destinations = destinations;
   }
 

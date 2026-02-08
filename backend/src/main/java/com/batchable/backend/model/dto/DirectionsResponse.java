@@ -1,5 +1,7 @@
 package com.batchable.backend.model.dto;
 
+import java.util.List;
+
 /**
  * DTO (Data Transfer Object) representing a response from the Google Directions API.
  *
@@ -9,15 +11,9 @@ package com.batchable.backend.model.dto;
  */
 public class DirectionsResponse {
 
-  // Human-readable distance (e.g., "10 km", "6 miles")
-  private String distanceText;
-
   // Distance in meters (e.g., 10000 meters)
   // Useful for calculations, sorting, or aggregations
   private int distanceMeters;
-
-  // Human-readable travel duration (e.g., "15 mins")
-  private String durationText;
 
   // Travel duration in seconds (e.g., 900)
   // Useful for calculations, like total travel time or ETA
@@ -28,14 +24,19 @@ public class DirectionsResponse {
    */
   public DirectionsResponse() {}
 
-  /** Getter for human-readable distance */
-  public String getDistanceText() {
-    return distanceText;
-  }
-
-  /** Setter for human-readable distance */
-  public void setDistanceText(String distanceText) {
-    this.distanceText = distanceText;
+  /**
+   * Constructor to build a flat DirectionsResponse from Google’s nested response.
+   *
+   * @param googleResponse GoogleResponse parsed from the API JSON
+   */
+  public DirectionsResponse(GoogleResponse googleResponse) {
+    if (googleResponse.getRoutes() != null && !googleResponse.getRoutes().isEmpty()) {
+      GoogleResponse.Route firstRoute = googleResponse.getRoutes().get(0);
+      this.distanceMeters = firstRoute.getDistanceMeters();
+      String durationString = firstRoute.getDuration(); // always of the form "<seconds>s"
+      this.durationSeconds =
+          Integer.parseInt(durationString.substring(0, durationString.length() - 1));
+    }
   }
 
   /** Getter for distance in meters */
@@ -48,16 +49,6 @@ public class DirectionsResponse {
     this.distanceMeters = distanceMeters;
   }
 
-  /** Getter for human-readable duration */
-  public String getDurationText() {
-    return durationText;
-  }
-
-  /** Setter for human-readable duration */
-  public void setDurationText(String durationText) {
-    this.durationText = durationText;
-  }
-
   /** Getter for duration in seconds */
   public int getDurationSeconds() {
     return durationSeconds;
@@ -66,5 +57,39 @@ public class DirectionsResponse {
   /** Setter for duration in seconds */
   public void setDurationSeconds(int durationSeconds) {
     this.durationSeconds = durationSeconds;
+  }
+
+  /** Nested DTO matching Google’s response structure */
+  public static class GoogleResponse {
+    private List<Route> routes;
+
+    public List<Route> getRoutes() {
+      return routes;
+    }
+
+    public void setRoutes(List<Route> routes) {
+      this.routes = routes;
+    }
+
+    public static class Route {
+      private int distanceMeters;
+      private String duration;
+
+      public int getDistanceMeters() {
+        return distanceMeters;
+      }
+
+      public void setDistanceMeters(int distanceMeters) {
+        this.distanceMeters = distanceMeters;
+      }
+
+      public String getDuration() {
+        return duration;
+      }
+
+      public void setDuration(String duration) {
+        this.duration = duration;
+      }
+    }
   }
 }
