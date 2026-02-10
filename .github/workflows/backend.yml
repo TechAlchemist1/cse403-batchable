@@ -63,7 +63,7 @@ jobs:
           distribution: 'temurin'
           cache: maven
       - name: Run CI Integration Tests
-        run: ./mvnw clean verify -Dtest=*CI_IT.java
+        run: ./mvnw clean verify -Dtest=*IT_CI.java
       - name: Annotate CI Integration Test Results
         if: always()
         uses: dorny/test-reporter@v2
