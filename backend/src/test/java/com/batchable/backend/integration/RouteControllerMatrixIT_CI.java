@@ -20,8 +20,6 @@ class RouteControllerMatrixIT_CI {
 
   @Test
   void testGetDistanceMatrix() throws Exception {
-    // response should have matrix field
-    // [[894,1291,2197],[897,0,2941]] (For now its entries are always durationSeconds)
     mockMvc
         .perform(get("/routes/distance-matrix").param("origins", "Seattle,WA")
             .param("origins", "Redmond,WA").param("destinations", "Bellevue,WA")
