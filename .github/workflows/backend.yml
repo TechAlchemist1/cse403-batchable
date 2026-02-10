@@ -69,5 +69,5 @@ jobs:
         uses: dorny/test-reporter@v2
         with:
           name: CI Integration Tests
-          path: backend/target/failsafe-reports/*.xml
+          path: backend/target/surefire-reports/*.xml
           reporter: java-junit
