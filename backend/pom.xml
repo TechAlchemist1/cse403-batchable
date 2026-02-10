@@ -71,7 +71,7 @@
 					<includes>
 						<include>**/*Test.java</include>
 						<include>**/*IT.java</include>
-						<include>**/*IT_CI.java</include>
+						<include>**/*CI_IT.java</include>
 					</includes>
 				</configuration>
 			</plugin>
