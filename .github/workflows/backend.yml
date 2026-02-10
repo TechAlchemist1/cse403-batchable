@@ -1,0 +1,73 @@
+# Java CI for batchable backend
+# Builds project and runs unit & integration tests with annotations
+
+name: Java CI for batchable backend
+on: [push, pull_request]
+
+env:
+  GOOGLE_ROUTES_API_KEY: ${{ secrets.GOOGLE_ROUTES_API_KEY }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+      - name: Build project
+        run: ./mvnw -B package -DskipTests
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+      - name: Run Unit Tests
+        run: ./mvnw clean test -Dtest=*Test.java
+      - name: Annotate Unit Test Results
+        if: always()
+        uses: dorny/test-reporter@v2
+        with:
+          name: Unit Tests
+          path: backend/target/surefire-reports/*.xml
+          reporter: java-junit
+
+  ci-integration-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+      - name: Run CI Integration Tests
+        run: ./mvnw clean verify -Dtest=*IT_CI.java
+      - name: Annotate CI Integration Test Results
+        if: always()
+        uses: dorny/test-reporter@v2
+        with:
+          name: CI Integration Tests
+          path: backend/target/surefire-reports/*.xml
+          reporter: java-junit
