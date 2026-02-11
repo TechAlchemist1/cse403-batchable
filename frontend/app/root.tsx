@@ -9,6 +9,7 @@ import {
 
 import type {Route} from './+types/root';
 import './app.css';
+import {Auth0Provider} from '@auth0/auth0-react';
 
 export const links: Route.LinksFunction = () => [
   {rel: 'preconnect', href: 'https://fonts.googleapis.com'},
@@ -23,6 +24,8 @@ export const links: Route.LinksFunction = () => [
   },
 ];
 
+const redirectUri = typeof window !== 'undefined' ? window.location.origin : '';
+
 export function Layout({children}: {children: React.ReactNode}) {
   return (
     <html lang="en">
@@ -33,7 +36,17 @@ export function Layout({children}: {children: React.ReactNode}) {
         <Links />
       </head>
       <body>
-        {children}
+        <Auth0Provider
+          domain="dev-3qj8cn8ady6wwlng.us.auth0.com"
+          clientId="WV9iiESgd8Uc56V35K5XZFEd7wbQYsoU"
+          authorizationParams={{
+            redirect_uri: redirectUri,
+          }}
+          cacheLocation="localstorage"
+          useRefreshTokens={false}
+        >
+          {children}
+        </Auth0Provider>
         <ScrollRestoration />
         <Scripts />
       </body>
