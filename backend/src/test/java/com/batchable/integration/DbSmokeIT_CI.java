@@ -1,4 +1,4 @@
-package com.batchable.backend.db.dao;
+package com.batchable.integration;
 
 import com.batchable.backend.db.PostgresTestBase;
 import org.junit.jupiter.api.Test;
@@ -8,7 +8,7 @@ import java.sql.Statement;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class DbSmokeTest extends PostgresTestBase {
+public class DbSmokeIT_CI extends PostgresTestBase {
 
   @Test
   void migrationsRan_canQueryDatabase() throws Exception {
