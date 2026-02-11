@@ -53,18 +53,6 @@
 			<artifactId>spring-boot-starter-webmvc-test</artifactId>
 			<scope>test</scope>
 		</dependency>
-		
-		<!-- For WebMvcTest (above does not give it) -->
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-test</artifactId>
-			<scope>test</scope>
-		</dependency>
-
-		<!-- for WebClient -->
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-webflux</artifactId>
 
 		<!-- For postgres tests -->
 		<dependency>
@@ -81,7 +69,7 @@
 			<scope>test</scope>
 		</dependency>
 
-		<!-- ✅ PostgreSQL JDBC driver (needed for DriverManager.getConnection in tests) -->
+		<!-- PostgreSQL JDBC driver (needed for DriverManager.getConnection in tests) -->
 		<dependency>
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>
@@ -91,6 +79,12 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-security</artifactId>
 		</dependency>
+
+    <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-test</artifactId>
+      <scope>test</scope>
+    </dependency>
 
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

@@ -9,7 +9,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -21,7 +21,7 @@ class RouteControllerMatrixIT_CI {
   @Test
   void testGetDistanceMatrix() throws Exception {
     mockMvc
-        .perform(get("/routes/distance-matrix").param("origins", "Seattle,WA")
+        .perform(get("/routes/distance-matrix").with(jwt()).param("origins", "Seattle,WA")
             .param("origins", "Redmond,WA").param("destinations", "Bellevue,WA")
             .param("destinations", "Redmond,WA").param("destinations", "Tacoma,WA"))
         .andExpect(status().isOk()).andExpect(jsonPath("$.matrix").isArray())

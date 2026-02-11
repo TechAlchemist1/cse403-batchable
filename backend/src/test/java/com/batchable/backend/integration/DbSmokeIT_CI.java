@@ -1,4 +1,4 @@
-package com.batchable.integration;
+package com.batchable.backend.integration;
 
 import com.batchable.backend.db.PostgresTestBase;
 import org.junit.jupiter.api.Test;
