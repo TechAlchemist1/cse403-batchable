@@ -2,7 +2,6 @@ package com.batchable.backend.model.dto;
 
 import java.util.ArrayList;
 import java.util.List;
-import org.springframework.beans.factory.annotation.Autowired;
 import com.batchable.backend.model.TravelMode;
 
 /**
