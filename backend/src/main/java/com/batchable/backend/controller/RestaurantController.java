@@ -1,21 +1,17 @@
 package com.batchable.backend.controller;
 
-// DTOs for request/response payloads
-import com.batchable.backend.model.dto.*;
-// Service layer that contains business logic
+import com.batchable.backend.db.models.Driver;
+import com.batchable.backend.db.models.MenuItem;
+import com.batchable.backend.db.models.Order;
+import com.batchable.backend.db.models.Restaurant;
 import com.batchable.backend.service.RestaurantService;
-
-import org.springframework.web.bind.annotation.*; // Spring annotations for REST
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
-// Marks this class as a REST controller in Spring
-// All methods return JSON by default
 @RequestMapping("/restaurant")
-// Base URL path for all endpoints in this controller
-// Example: GET /routes/directions
 public class RestaurantController {
 
-  // Dependency on the service layer
   private final RestaurantService restaurantService;
 
   /**
@@ -24,5 +20,101 @@ public class RestaurantController {
    */
   public RestaurantController(RestaurantService restaurantService) {
     this.restaurantService = restaurantService;
+  }
+
+  /**
+   * Create a new restaurant.
+   *
+   * POST /restaurant
+   *
+   * @param restaurant the Restaurant object to create
+   */
+  @PostMapping
+  @ResponseStatus(HttpStatus.CREATED)
+  public void createRestaurant(@RequestBody Restaurant restaurant) {
+    restaurantService.createRestaurant(restaurant);
+  }
+
+  /**
+   * Update mutable fields of an existing restaurant.
+   *
+   * PUT /restaurant/{restaurantId}
+   *
+   * @param restaurantId the ID of the restaurant to update
+   * @param restaurant Restaurant object containing updated fields
+   */
+  @PutMapping("/{restaurantId}")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void updateRestaurant(@PathVariable long restaurantId, @RequestBody Restaurant restaurant) {
+    restaurantService.updateRestaurant(restaurantId, restaurant);
+  }
+
+  /**
+   * Get a restaurant by ID.
+   *
+   * GET /restaurant/{restaurantId}
+   *
+   * @param restaurantId the ID of the restaurant
+   * @return the Restaurant object
+   */
+  @GetMapping("/{restaurantId}")
+  @ResponseStatus(HttpStatus.OK)
+  public Restaurant getRestaurant(@PathVariable long restaurantId) {
+    return restaurantService.getRestaurant(restaurantId);
+  }
+
+  /**
+   * Delete a restaurant by ID.
+   *
+   * DELETE /restaurant/{restaurantId}
+   *
+   * @param restaurantId the ID of the restaurant to delete
+   */
+  @DeleteMapping("/{restaurantId}")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void removeRestaurant(@PathVariable long restaurantId) {
+    restaurantService.removeRestaurant(restaurantId);
+  }
+
+  /**
+   * Get all active orders for a restaurant.
+   *
+   * GET /order/restaurant/{restaurantId}
+   *
+   * @param restaurantId the restaurant ID
+   * @return list of Orders
+   */
+  @GetMapping("/restaurant/{restaurantId}")
+  @ResponseStatus(HttpStatus.OK)
+  public Order[] getRestaurantOrders(@PathVariable long restaurantId) {
+    return restaurantService.getRestaurantOrders(restaurantId);
+  }
+
+  /**
+   * Get all drivers associated with a restaurant.
+   *
+   * GET /restaurant/{restaurantId}/drivers
+   *
+   * @param restaurantId the restaurant ID
+   * @return array of Driver objects
+   */
+  @GetMapping("/{restaurantId}/drivers")
+  @ResponseStatus(HttpStatus.OK)
+  public Driver[] getRestaurantDrivers(@PathVariable long restaurantId) {
+    return restaurantService.getRestaurantDrivers(restaurantId);
+  }
+
+  /**
+   * Get all menu items associated with a restaurant.
+   *
+   * GET /restaurant/{restaurantId}/menu
+   *
+   * @param restaurantId the restaurant ID
+   * @return array of MenuItem objects
+   */
+  @GetMapping("/{restaurantId}/menu")
+  @ResponseStatus(HttpStatus.OK)
+  public MenuItem[] getRestaurantMenuItems(@PathVariable long restaurantId) {
+    return restaurantService.getRestaurantMenuItems(restaurantId);
   }
 }

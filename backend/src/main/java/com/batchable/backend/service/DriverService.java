@@ -2,7 +2,6 @@ package com.batchable.backend.service;
 
 import com.batchable.backend.db.models.Batch;
 import com.batchable.backend.db.models.Driver;
-import com.batchable.backend.model.dto.*;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
 
@@ -66,7 +65,7 @@ public class DriverService {
    * Attempting to go off shift while actively delivering • Driver is in an inconsistent batch state
    * - RuntimeException if persistence fails
    */
-  public void setDriverOnShift(long driverId, boolean onShift) {
+  public void updateDriverOnShift(long driverId, boolean onShift) {
     // TODO
     throw new UnsupportedOperationException("Not implemented yet");
   }

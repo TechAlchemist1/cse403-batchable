@@ -1,5 +1,6 @@
 package com.batchable.backend.service;
 
+import com.batchable.backend.db.models.Batch;
 import com.batchable.backend.db.models.Order;
 import com.batchable.backend.websocket.OrderWebSocketPublisher;
 import java.time.Instant;
@@ -94,7 +95,7 @@ public class OrderService {
    *      • Order is already DELIVERED
    *  - RuntimeException if persistence fails
    */
-  public void changeOrderCookedTime(long orderId, Instant cookedTime) {
+  public void updateOrderCookedTime(long orderId, Instant cookedTime) {
     // TODO
     throw new UnsupportedOperationException("Not implemented yet");
     // Push update to frontend via WebSocket
@@ -145,27 +146,12 @@ public class OrderService {
   }
 
   /**
-   * Returns all active and historical orders for a given restaurant.
-   *
-   * Responsibilities:
-   *  - Validate restaurant exists (optional depending on architecture)
-   *
-   * Errors:
-   *  - IllegalArgumentException if restaurantId does not exist
-   */
-  public Order[] getRestaurantOrders(long restaurantId) {
-    // TODO
-    throw new UnsupportedOperationException("Not implemented yet");
-  }
-
-
-  /**
    * Returns the Batch corresponding to the given batchId.
    *
    * Errors:
    *  - IllegalArgumentException if batchId does not exist
    */
-  public Order[] getBatch(long batchId) {
+  public Batch getBatch(long batchId) {
     // TODO
     throw new UnsupportedOperationException("Not implemented yet");
   }

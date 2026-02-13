@@ -2,8 +2,8 @@ package com.batchable.backend.service;
 
 import com.batchable.backend.db.models.Driver;
 import com.batchable.backend.db.models.MenuItem;
+import com.batchable.backend.db.models.Order;
 import com.batchable.backend.db.models.Restaurant;
-import com.batchable.backend.model.dto.*;
 import org.springframework.stereotype.Service;
 
 /**
@@ -107,6 +107,20 @@ public class RestaurantService {
     // TODO
     throw new UnsupportedOperationException("Not implemented yet");
   }   
+
+  /**
+   * Returns all active orders for a given restaurant.
+   *
+   * Responsibilities:
+   *  - Validate restaurant exists (optional depending on architecture)
+   *
+   * Errors:
+   *  - IllegalArgumentException if restaurantId does not exist
+   */
+  public Order[] getRestaurantOrders(long restaurantId) {
+    // TODO
+    throw new UnsupportedOperationException("Not implemented yet");
+  }
 
   /**
    * Returns all drivers associated with the given restaurant.
