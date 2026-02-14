@@ -47,7 +47,10 @@ public class RouteService {
         return routesClient.getDirections(req);
     }
 
-    // TODO comment
+    /**
+     * Business-level method for getting the current integer number of seconds 
+     * to travel from the address 'from' to the address 'to'.
+     */
     public int getSecondsBetween(String from, String to) {
       return getDirections(from, to).getDurationSeconds();
     }

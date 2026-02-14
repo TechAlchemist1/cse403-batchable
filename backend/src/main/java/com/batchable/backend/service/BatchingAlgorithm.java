@@ -8,6 +8,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import org.springframework.stereotype.Service;
 import com.batchable.backend.db.models.Order;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.Cache;
@@ -21,6 +22,7 @@ import com.google.common.cache.Cache;
  * cooked time in descending order to efficiently identify the next batch ready
  * for dispatch.
  */
+@Service
 public class BatchingAlgorithm {
 
   private final RouteService routeService;
