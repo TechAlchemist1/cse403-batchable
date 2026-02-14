@@ -12,6 +12,10 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
+    coverage: {
+      enabled: true,
+      exclude: ['test/mocks'],
+    },
     setupFiles: ['./test/setup.ts'],
   },
 });
