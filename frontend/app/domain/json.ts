@@ -22,87 +22,113 @@ export type JSONDomainObject<T> = {
   [K in keyof T]: JSONDomainField<T[K]>;
 };
 
-type JSONDomainFieldParser<T> = (encoded: JSONDomainField<T>) => T;
-
 /**
- * Converts a Polyline from post-parsing JSON format to TypeScript format.
- * @param encoded The Google-API-encoded representation of the polyline
- * @returns The TypeScript representation of the Polyline
+ * Represents a method of converting field values between a TypeScript domain object representation, and a post-parsing JSON representation. `parse` converts from JSON to TypeScript, and `unparse` vice-versa.
  */
-const parsePolyline: JSONDomainFieldParser<Polyline> = encoded => ({
-  encoded,
+interface JSONFieldParserPair<T> {
+  parse: (json: JSONDomainField<T>) => T;
+  unparse: (domain: T) => JSONDomainField<T>;
+}
+
+const parsePolyline: JSONFieldParserPair<Polyline> = {
+  parse(encoded) {
+    return {encoded};
+  },
+  unparse(polyline) {
+    return polyline.encoded;
+  },
+};
+
+const parseWorldLocation: JSONFieldParserPair<WorldLocation> = {
+  parse(address) {
+    return {address};
+  },
+  unparse(loc) {
+    return loc.address;
+  },
+};
+
+const parseDate: JSONFieldParserPair<Date> = {
+  parse(utc) {
+    return new Date(utc);
+  },
+  unparse(date) {
+    return date.toUTCString();
+  },
+};
+
+const parseId = <T extends string>(type: T): JSONFieldParserPair<Id<T>> => ({
+  parse(id) {
+    return {type, id};
+  },
+  unparse(id) {
+    return id.id;
+  },
 });
 
-/**
- * Converts a WorldLocation from post-parsing JSON format to TypeScript format.
- * @param address The address string of the WorldLocation
- * @returns The TypeScript representation of the WorldLocation
- */
-const parseWorldLocation: JSONDomainFieldParser<WorldLocation> = address => ({
-  address,
+const parseNullable = <T>(
+  parserPair: JSONFieldParserPair<T>,
+): JSONFieldParserPair<T | null> => ({
+  parse(json) {
+    return json === null ? null : parserPair.parse(json);
+  },
+  unparse(domain) {
+    return domain === null ? null : parserPair.unparse(domain);
+  },
 });
 
-/**
- * Converts a Date from post-parsing JSON format to TypeScript format.
- * @param utc The UTC date string of the Date
- * @returns The TypeScript representation of the Date
- */
-const parseDate: JSONDomainFieldParser<Date> = utc => new Date(utc);
-
-/**
- * Creates a parser for converting domain object Ids from post-parsing JSON format to TypeScript format.
- * @param type The type identifier for the id
- * @returns A mapping from the JSON id to its TypeScript representation
- */
-const parseId =
-  <T extends string>(type: T) =>
-  (id: JSONDomainField<Id<T>>): Id<T> => ({type, id});
-
-/**
- * Parses a value by allowing null to pass through unchanged. If not null, delegates to a given function.
- * @param parse The function to parse non-null values with
- * @returns The final parser function
- */
-const parseNullable =
-  <T, R>(parse: (jsonValue: T) => R) =>
-  (jsonValue: T | null): R | null => {
-    return jsonValue === null ? null : parse(jsonValue);
-  };
-
-/**
- * An identity parsing function for use with {@link parseDomainObject}.
- * @param x The JSON value which is in need of no further parsing
- * @returns Its argument
- */
-const identity = <T>(x: T) => x;
-
-type JSONParserSpec<T> = {
-  [K in keyof T]: (jsonValue: JSONDomainField<T[K]>) => T[K];
+const identity = {
+  parse<T>(x: T) {
+    return x;
+  },
+  unparse<T>(x: T) {
+    return x;
+  },
 };
 
 /**
- * Creates a parser for a given domain object type based on parsing functions for each field.
- * @param spec A mapping from domain object keys to functions which can parse their JSON-like values
- * @returns A function from a post-parsing JSON representation of the given object to the full TypeScript representation of the domain object
+ * Represents a method of converting domain objects between a TypeScript domain object representation, and a post-parsing JSON representation. `parse` converts from JSON to TypeScript, and `unparse` vice-versa.
  */
-function createDomainObjectParser<T>(spec: JSONParserSpec<T>) {
-  return (json: JSONDomainObject<T>): T => {
-    const result = {} as T; // safe since "result" is never read until return
-    for (const key in spec) {
-      if (!Object.hasOwn(spec, key)) continue;
-      result[key] = spec[key](json[key]);
-    }
-    return result;
+export interface JSONParserPair<T> {
+  parse(json: JSONDomainObject<T>): T;
+  unparse(domain: T): JSONDomainObject<T>;
+}
+
+/**
+ * Creates a parser for a given domain object type based on parsing functions for each field.
+ * @param spec A mapping from domain object keys to parser pairs which can parse their JSON-like values
+ * @returns A parser pair from a post-parsing JSON representation of the given object to the full TypeScript representation of the domain object
+ */
+function createDomainObjectParserPair<T>(spec: {
+  [K in keyof T]: JSONFieldParserPair<T[K]>;
+}): JSONParserPair<T> {
+  return {
+    parse(json: JSONDomainObject<T>): T {
+      const domainObject = {} as T; // safe since "result" isn't read until return
+      for (const key in spec) {
+        if (!Object.hasOwn(spec, key)) continue;
+        domainObject[key] = spec[key].parse(json[key]);
+      }
+      return domainObject;
+    },
+    unparse(domainObject: T): JSONDomainObject<T> {
+      const json = {} as JSONDomainObject<T>; // safe since "result" isn't read until return
+      for (const key in spec) {
+        if (!Object.hasOwn(spec, key)) continue;
+        json[key] = spec[key].unparse(domainObject[key]);
+      }
+      return json;
+    },
   };
 }
 
-export const parseRestaurant = createDomainObjectParser<Restaurant>({
+export const restaurant = createDomainObjectParserPair<Restaurant>({
   id: parseId('Restaurant'),
   location: parseWorldLocation,
   name: identity,
 });
 
-export const parseDriver = createDomainObjectParser<Driver>({
+export const driver = createDomainObjectParserPair<Driver>({
   id: parseId('Driver'),
   phoneNumber: identity,
   restaurant: parseId('Restaurant'),
@@ -110,7 +136,7 @@ export const parseDriver = createDomainObjectParser<Driver>({
   onShift: identity,
 });
 
-export const parseOrder = createDomainObjectParser<Order>({
+export const order = createDomainObjectParserPair<Order>({
   id: parseId('Order'),
   restaurant: parseId('Restaurant'),
   destination: parseWorldLocation,
@@ -123,7 +149,7 @@ export const parseOrder = createDomainObjectParser<Order>({
   currentBatch: parseNullable(parseId('Batch')),
 });
 
-export const parseBatch = createDomainObjectParser<Batch>({
+export const batch = createDomainObjectParserPair<Batch>({
   id: parseId('Batch'),
   driver: parseId('Driver'),
   route: parsePolyline,
@@ -131,7 +157,7 @@ export const parseBatch = createDomainObjectParser<Batch>({
   expectedCompletionTime: parseDate,
 });
 
-export const parseMenuItem = createDomainObjectParser<MenuItem>({
+export const menuItem = createDomainObjectParserPair<MenuItem>({
   id: parseId('MenuItem'),
   restaurant: parseId('Restaurant'),
   name: identity,
