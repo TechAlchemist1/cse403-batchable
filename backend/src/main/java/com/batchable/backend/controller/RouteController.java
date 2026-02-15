@@ -1,12 +1,16 @@
 package com.batchable.backend.controller;
 
 // DTOs for request/response payloads
-import com.batchable.backend.model.dto.*;
+import com.batchable.backend.model.dto.DirectionsResponse;
+import com.batchable.backend.model.dto.DistanceMatrixResponse;
 
 // Service layer that contains business logic
 import com.batchable.backend.service.RouteService;
 
-import org.springframework.web.bind.annotation.*; // Spring annotations for REST
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 

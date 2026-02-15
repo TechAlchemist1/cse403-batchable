@@ -4,6 +4,7 @@ import com.batchable.backend.db.models.Driver;
 import com.batchable.backend.db.models.MenuItem;
 import com.batchable.backend.db.models.Order;
 import com.batchable.backend.db.models.Restaurant;
+import java.util.List;
 import org.springframework.stereotype.Service;
 
 /**
@@ -117,7 +118,7 @@ public class RestaurantService {
    * Errors:
    *  - IllegalArgumentException if restaurantId does not exist
    */
-  public Order[] getRestaurantOrders(long restaurantId) {
+  public List<Order> getRestaurantOrders(long restaurantId) {
     // TODO
     throw new UnsupportedOperationException("Not implemented yet");
   }
@@ -135,7 +136,7 @@ public class RestaurantService {
    * Errors:
    *  - IllegalArgumentException if restaurantId does not exist
    */
-  public Driver[] getRestaurantDrivers(long restaurantId) {
+  public List<Driver> getRestaurantDrivers(long restaurantId) {
     // TODO
     throw new UnsupportedOperationException("Not implemented yet");
   }
@@ -150,7 +151,7 @@ public class RestaurantService {
    * Errors:
    *  - IllegalArgumentException if restaurantId does not exist
    */
-  public MenuItem[] getRestaurantMenuItems(long restaurantId) {
+  public List<MenuItem> getRestaurantMenuItems(long restaurantId) {
     // TODO
     throw new UnsupportedOperationException("Not implemented yet");
   }

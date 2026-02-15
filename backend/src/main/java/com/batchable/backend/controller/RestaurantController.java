@@ -5,8 +5,18 @@ import com.batchable.backend.db.models.MenuItem;
 import com.batchable.backend.db.models.Order;
 import com.batchable.backend.db.models.Restaurant;
 import com.batchable.backend.service.RestaurantService;
+import java.util.List;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
+
 
 @RestController
 @RequestMapping("/restaurant")
@@ -86,7 +96,7 @@ public class RestaurantController {
    */
   @GetMapping("/restaurant/{restaurantId}")
   @ResponseStatus(HttpStatus.OK)
-  public Order[] getRestaurantOrders(@PathVariable long restaurantId) {
+  public List<Order> getRestaurantOrders(@PathVariable long restaurantId) {
     return restaurantService.getRestaurantOrders(restaurantId);
   }
 
@@ -100,7 +110,7 @@ public class RestaurantController {
    */
   @GetMapping("/{restaurantId}/drivers")
   @ResponseStatus(HttpStatus.OK)
-  public Driver[] getRestaurantDrivers(@PathVariable long restaurantId) {
+  public List<Driver> getRestaurantDrivers(@PathVariable long restaurantId) {
     return restaurantService.getRestaurantDrivers(restaurantId);
   }
 
@@ -114,7 +124,7 @@ public class RestaurantController {
    */
   @GetMapping("/{restaurantId}/menu")
   @ResponseStatus(HttpStatus.OK)
-  public MenuItem[] getRestaurantMenuItems(@PathVariable long restaurantId) {
+  public List<MenuItem> getRestaurantMenuItems(@PathVariable long restaurantId) {
     return restaurantService.getRestaurantMenuItems(restaurantId);
   }
 }
