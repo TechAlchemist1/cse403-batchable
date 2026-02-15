@@ -7,9 +7,9 @@ The directory so far has only a section for our weekly status reports. We will u
 A link to our requirements and plan can be found here: https://docs.google.com/document/d/1lBQPrSYdc8PdP-THlGFKEYEQGw-icpVO-P4352XmHsA/edit?usp=sharing
 
 ## Editor/Git Configuration
-Please install an [EditorConfig](https://editorconfig.org/) extension/plug-in for your editor so as to use our global .editorconfig settings and not mess up spacing, indentation, or line endings. If you're on Windows, please also use Git's `autocrlf=true` option, which is likely already enabled. If it's not, you can use:
+Please install an [EditorConfig](https://editorconfig.org/) extension/plug-in for your editor so as to use our global .editorconfig settings and not mess up spacing, indentation, or line endings. If you're on Windows, please also use Git's `autocrlf=false` option, which is likely already enabled. If it's not, you can use:
 ```sh
-$ git config --global autocrlf true
+$ git config --global autocrlf false
 ```
 Thank you!
 
