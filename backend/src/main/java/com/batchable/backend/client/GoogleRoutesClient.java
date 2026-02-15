@@ -48,13 +48,18 @@ public class GoogleRoutesClient {
    * Calls Google's Directions API and returns a parsed response. Automatically includes the
    * required FieldMask header.
    */
-  public RouteDirectionsResponse getRouteDirections(RouteDirectionsRequest request) {
+  public RouteDirectionsResponse getRouteDirections(RouteDirectionsRequest request,
+      boolean includeLegs) {
+    String fieldMask = "routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline";
+    if (includeLegs) {
+      fieldMask += ",routes.legs";
+    }
     try {
       RouteDirectionsResponse.GoogleResponse googleResponse = webClient.post()
           .uri(uriBuilder -> uriBuilder.path("/directions/v2:computeRoutes")
               .queryParam("key", apiKey).build())
-          .header("X-Goog-FieldMask", "routes.polyline.encodedPolyline").bodyValue(request)
-          .retrieve().bodyToMono(RouteDirectionsResponse.GoogleResponse.class).block();
+          .header("X-Goog-FieldMask", fieldMask).bodyValue(request).retrieve()
+          .bodyToMono(RouteDirectionsResponse.GoogleResponse.class).block();
       return new RouteDirectionsResponse(googleResponse);
     } catch (WebClientResponseException e) {
       throw new RuntimeException(

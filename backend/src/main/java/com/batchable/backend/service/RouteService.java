@@ -61,7 +61,8 @@ public class RouteService {
    * This method: - translates simple inputs (Strings) - into a structured DirectionsRequest DTO -
    * sets default business rules (e.g., travel mode) - delegates the API call to the client
    */
-  public RouteDirectionsResponse getRouteDirections(String resterauntAddress, List<String> stops) {
+  public RouteDirectionsResponse getRouteDirections(String resterauntAddress, List<String> stops,
+      boolean includeLegs) {
 
     // Build the request object expected by Google Routes
     RouteDirectionsRequest req = new RouteDirectionsRequest();
@@ -74,7 +75,7 @@ public class RouteService {
     req.setTravelMode(TravelMode.DRIVE);
 
     // Delegate the external API call to the client
-    return routesClient.getRouteDirections(req);
+    return routesClient.getRouteDirections(req, includeLegs);
   }
 
   /**

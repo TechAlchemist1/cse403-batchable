@@ -36,7 +36,7 @@ public class RestaurantBatchingManager {
   private final List<Consumer<Batches>> batchesChangeListeners = new ArrayList<>();
   private final List<Consumer<Batch>> batchBecomeActiveListeners = new ArrayList<>();
   private final Batches batches = new Batches();
-  private final Queue<Driver> readyDrivers;
+  private final Queue<Driver> readyDrivers = new LinkedList<Driver>();
   private final RouteService routeService;
 
   /**
@@ -56,9 +56,6 @@ public class RestaurantBatchingManager {
     this.publisher = publisher;
     this.batchingAlgorithm = batchingAlgorithm;
     this.routeService = routeService;
-
-    // TODO: change to get drivers that are currently on shift
-    this.readyDrivers = new LinkedList<>();
   }
 
   /**
@@ -166,7 +163,7 @@ public class RestaurantBatchingManager {
       }
 
       // Compute route and duration using RouteService
-      RouteDirectionsResponse resp = routeService.getRouteDirections(restaurantAddress, stops);
+      RouteDirectionsResponse resp = routeService.getRouteDirections(restaurantAddress, stops, false);
       String polyline = resp.getPolyline();
       int routeSeconds = resp.getDurationSeconds();
 
