@@ -32,11 +32,7 @@ public final class RestaurantDAO {
             ps.setLong(1, id);
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) return Optional.empty();
-                return Optional.of(new Restaurant(
-                        rs.getLong("id"),
-                        rs.getString("name"),
-                        rs.getString("location")
-                ));
+                return Optional.of(mapRestaurant(rs));
             }
         }
     }
@@ -47,13 +43,66 @@ public final class RestaurantDAO {
         try (PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                out.add(new Restaurant(
-                    rs.getLong("id"),
-                    rs.getString("name"),
-                    rs.getString("location")
-                ));
+                out.add(mapRestaurant(rs));
             }
         }
         return out;
+    }
+
+    public boolean updateRestaurant(long restaurantId, String name, String location) throws SQLException {
+        final String sql = "UPDATE Restaurant SET name = ?, location = ? WHERE id = ?;";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, name);
+            ps.setString(2, location);
+            ps.setLong(3, restaurantId);
+            return ps.executeUpdate() == 1;
+        }
+    }
+
+    public boolean deleteRestaurant(long restaurantId) throws SQLException {
+        final String sql = "DELETE FROM Restaurant WHERE id = ?;";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, restaurantId);
+            return ps.executeUpdate() == 1;
+        }
+    }
+
+    public boolean restaurantExists(long restaurantId) throws SQLException {
+        final String sql = "SELECT 1 FROM Restaurant WHERE id = ? LIMIT 1;";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, restaurantId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
+    public boolean restaurantExistsByName(String name) throws SQLException {
+        final String sql = "SELECT 1 FROM Restaurant WHERE name = ? LIMIT 1;";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, name);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
+    public boolean restaurantExistsByNameExcludingId(long excludedRestaurantId, String name) throws SQLException {
+        final String sql = "SELECT 1 FROM Restaurant WHERE name = ? AND id <> ? LIMIT 1;";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, name);
+            ps.setLong(2, excludedRestaurantId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
+    private static Restaurant mapRestaurant(ResultSet rs) throws SQLException {
+        return new Restaurant(
+            rs.getLong("id"),
+            rs.getString("name"),
+            rs.getString("location")
+        );
     }
 }

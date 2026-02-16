@@ -84,4 +84,35 @@ public final class DriverDAO {
         }
         return out;
     }
+
+     /** Updates mutable driver fields (NOT id, NOT restaurant_id, NOT on_shift). */
+    public boolean updateDriver(long driverId, String name, String phoneNumber) throws SQLException {
+        final String sql = "UPDATE Driver SET name = ?, phone_number = ? WHERE id = ?;";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, name);
+            ps.setString(2, phoneNumber);
+            ps.setLong(3, driverId);
+            return ps.executeUpdate() == 1;
+        }
+    }
+
+    /** Deletes a driver row by id. Returns true if a row was deleted. */
+    public boolean deleteDriver(long driverId) throws SQLException {
+        final String sql = "DELETE FROM Driver WHERE id = ?;";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, driverId);
+            return ps.executeUpdate() == 1;
+        }
+    }
+
+    public boolean hasOnShiftDrivers(long restaurantId) throws SQLException {
+        final String sql =
+            "SELECT 1 FROM Driver WHERE restaurant_id = ? AND on_shift = TRUE LIMIT 1;";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, restaurantId);
+            try (ResultSet rs = ps.executeQuery()) {
+            return rs.next();
+            }
+        }
+    }
 }

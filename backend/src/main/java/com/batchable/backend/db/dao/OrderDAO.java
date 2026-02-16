@@ -84,31 +84,99 @@ public final class OrderDAO {
         }
     }
 
-    public void updateOrderState(long orderId, Order.State newState) throws SQLException {
+    public boolean updateOrderState(long orderId, Order.State newState) throws SQLException {
         final String sql = "UPDATE \"Order\" SET state = ?::order_state WHERE id = ?;";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, newState.name());
             ps.setLong(2, orderId);
-            ps.executeUpdate();
+            return ps.executeUpdate() == 1;
         }
     }
 
-    public void assignOrderToBatch(long orderId, long batchId) throws SQLException {
+
+    /** Returns true if exactly one row updated (order existed). */
+    public boolean updateOrderCookedTime(long orderId, Instant cookedTime) throws SQLException {
+        final String sql = "UPDATE \"Order\" SET cooked_time = ? WHERE id = ?;";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        ps.setTimestamp(1, ts(cookedTime));
+        ps.setLong(2, orderId);
+        return ps.executeUpdate() == 1;
+        }
+    }
+
+    /** Returns true if exactly one row updated (order existed). */
+    public boolean updateOrderDeliveryTime(long orderId, Instant deliveryTime) throws SQLException {
+        final String sql = "UPDATE \"Order\" SET delivery_time = ? WHERE id = ?;";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        ps.setTimestamp(1, ts(deliveryTime));
+        ps.setLong(2, orderId);
+        return ps.executeUpdate() == 1;
+        }
+    }
+
+     /** Returns true if exactly one row updated (order existed). */
+    public boolean setOrderHighPriority(long orderId, boolean highPriority) throws SQLException {
+        final String sql = "UPDATE \"Order\" SET high_priority = ? WHERE id = ?;";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        ps.setBoolean(1, highPriority);
+        ps.setLong(2, orderId);
+        return ps.executeUpdate() == 1;
+        }
+    }
+
+    /**
+     * Resets an order to behave like it was remade.
+     *
+     * Since your model has no CREATED state, the “initial” state must be COOKING.
+     * This method:
+     *  - state = COOKING (or whatever you pass)
+     *  - cooked_time = NULL
+     *  - delivery_time = NULL
+     *  - batch_id = NULL
+     *  - high_priority = true (or whatever you pass)
+     *
+     * Returns true if exactly one row updated (order existed).
+     */
+    public boolean remakeOrder(long orderId, Order.State resetState, boolean highPriority) throws SQLException {
+        final String sql =
+            "UPDATE \"Order\" " +
+            "SET state = ?::order_state, cooked_time = NULL, delivery_time = NULL, batch_id = NULL, high_priority = ? " +
+            "WHERE id = ?;";
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        ps.setString(1, resetState.name());
+        ps.setBoolean(2, highPriority);
+        ps.setLong(3, orderId);
+        return ps.executeUpdate() == 1;
+        }
+    }
+
+    /** Returns true if exactly one row deleted (order existed). */
+    public boolean deleteOrder(long orderId) throws SQLException {
+        final String sql = "DELETE FROM \"Order\" WHERE id = ?;";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        ps.setLong(1, orderId);
+        return ps.executeUpdate() == 1;
+        }
+    }
+
+    public boolean assignOrderToBatch(long orderId, long batchId) throws SQLException {
         final String sql = "UPDATE \"Order\" SET batch_id = ? WHERE id = ?;";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, batchId);
             ps.setLong(2, orderId);
-            ps.executeUpdate();
+            return ps.executeUpdate() == 1;
         }
     }
 
-    public void unassignOrderFromBatch(long orderId) throws SQLException {
+    public boolean unassignOrderFromBatch(long orderId) throws SQLException {
         final String sql = "UPDATE \"Order\" SET batch_id = NULL WHERE id = ?;";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setLong(1, orderId);
-            ps.executeUpdate();
+            return ps.executeUpdate() == 1;
         }
     }
+
 
     public List<Order> listOrdersInBatch(long batchId) throws SQLException {
         final String sql =
@@ -161,5 +229,16 @@ public final class OrderDAO {
                 rs.getBoolean("high_priority"),
                 nullableLong(rs, "batch_id")
         );
+    }
+
+    public boolean hasActiveOrdersForRestaurant(long restaurantId) throws SQLException {
+        final String sql =
+            "SELECT 1 FROM \"Order\" WHERE restaurant_id = ? AND state <> 'DELIVERED' LIMIT 1;";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, restaurantId);
+            try (ResultSet rs = ps.executeQuery()) {
+            return rs.next();
+            }
+        }
     }
 }

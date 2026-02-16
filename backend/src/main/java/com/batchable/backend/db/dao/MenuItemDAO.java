@@ -62,4 +62,26 @@ public final class MenuItemDAO {
         }
         return out;
     }
+
+    /** Returns true if a row was deleted (menuItemId existed). */
+    public boolean deleteMenuItem(long menuItemId) throws SQLException {
+        final String sql = "DELETE FROM MenuItem WHERE id = ?;";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, menuItemId);
+            return ps.executeUpdate() == 1;
+        }
+    }
+
+    /** Useful for MenuService "no duplicates" invariant. */
+    public boolean menuItemExistsForRestaurantByName(long restaurantId, String name) throws SQLException {
+        final String sql =
+            "SELECT 1 FROM MenuItem WHERE restaurant_id = ? AND name = ? LIMIT 1;";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, restaurantId);
+            ps.setString(2, name);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
 }
