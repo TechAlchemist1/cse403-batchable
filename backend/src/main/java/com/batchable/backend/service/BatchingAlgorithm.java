@@ -25,7 +25,9 @@ import com.google.common.cache.Cache;
 @Service
 public class BatchingAlgorithm {
   private final RouteService routeService;
+  private final OrderService orderService;
   private final int SECONDS_TO_HAND_DELIVER = 300; // seconds to park, walk up, walk back
+  private final int PADDING_SECONDS = 60;
 
   // Cache travel times between origins and destinations, expiring 15 minutes after write
   private final Cache<String, Integer> travelTimeCache =
@@ -34,11 +36,11 @@ public class BatchingAlgorithm {
   /**
    * Represents a tentative batch of orders.
    */
-  public class TentativeBatch {
+  public static class TentativeBatch {
     private final List<Order> batch;
     private Instant latestAllowedCookedTime;
 
-    private TentativeBatch(List<Order> batch, Instant latestAllowedCookedTime) {
+    public TentativeBatch(List<Order> batch, Instant latestAllowedCookedTime) {
       this.batch = batch;
       this.latestAllowedCookedTime = latestAllowedCookedTime;
     }
@@ -67,8 +69,9 @@ public class BatchingAlgorithm {
    * 
    * @param routeService the service used to compute travel durations between addresses
    */
-  public BatchingAlgorithm(RouteService routeService) {
+  public BatchingAlgorithm(RouteService routeService, OrderService orderService) {
     this.routeService = routeService;
+    this.orderService = orderService;
   }
 
   /**
@@ -189,6 +192,14 @@ public class BatchingAlgorithm {
         || order.cookedTime.isAfter(order.deliveryTime)) {
       throw new IllegalStateException("Orders must have initialTime < cookedTime < deliveryTime");
     }
+
+    Instant lastAllowedCookedTime = getLastAllowedCookedTime(order, restaurantAddress);
+    if (order.cookedTime.isAfter(lastAllowedCookedTime)) {
+      Order updatedOrder = fixDeliveryTime(order, lastAllowedCookedTime);
+      addOrder(batches, updatedOrder, restaurantAddress);
+      return;
+    }
+
     for (int i = 0; i < batches.size(); i++) {
       TentativeBatch tentativeBatch = batches.get(i);
 
@@ -206,13 +217,37 @@ public class BatchingAlgorithm {
       // Reinsert batch if first order changed to maintain descending order by
       // latestAllowedCookedTime
       if (insertionInd == 0) {
-        tentativeBatch.latestAllowedCookedTime = getLastAllowedCookedTime(order, restaurantAddress);
+        tentativeBatch.latestAllowedCookedTime = lastAllowedCookedTime;
         batches.remove(i);
         insertBatch(batches, tentativeBatch);
       }
       return;
     }
-    insertBatch(batches, createNewBatchWithOrder(order, restaurantAddress));
+    insertBatch(batches, createNewBatchWithOrder(order, lastAllowedCookedTime, restaurantAddress));
+  }
+
+  /**
+   * Adjusts an order’s delivery time to accommodate a cooked time that exceeds the latest allowed
+   * cooked time.
+   *
+   * The delivery time is pushed back by the excess amount plus a fixed padding, and the updated
+   * order is persisted and reloaded from the database.
+   *
+   * @param order the order to update
+   * @param lastAllowedCookedTime the latest permissible cooked time for this order
+   * @return the updated order with an adjusted delivery time
+   * @throws IllegalArgumentException if lastAllowedCookedTime is after the order’s cookedTime
+   */
+  private Order fixDeliveryTime(final Order order, final Instant lastAllowedCookedTime) {
+    Duration difference = Duration.between(lastAllowedCookedTime, order.cookedTime);
+    if (difference.isNegative()) {
+      throw new IllegalArgumentException(
+          "This method must only be called with a lastAllowedCookedTime earlier than the order's cookedTime");
+    }
+    Duration paddedDifference = difference.plus(Duration.ofSeconds(PADDING_SECONDS));
+    orderService.updateOrderDeliveryTime(order.id, order.deliveryTime.plus(paddedDifference));
+    Order updatedOrder = orderService.getOrder(order.id);
+    return updatedOrder;
   }
 
   /**
@@ -269,13 +304,15 @@ public class BatchingAlgorithm {
    * Creates a new batch containing a single order.
    *
    * @param order the initial order in the batch
+   * @param latestAllowedCookedTime the Instant representing the latest time the initial order
+   *        should be cooked by to deliver it on time
    * @param restaurantAddress the address of the restaurant preparing the order
    * @return a newly created tentative batch
    */
-  private TentativeBatch createNewBatchWithOrder(Order order, String restaurantAddress) {
+  private TentativeBatch createNewBatchWithOrder(Order order, Instant latestAllowedCookedTime,
+      String restaurantAddress) {
     List<Order> batch = new ArrayList<Order>();
     batch.add(order);
-    final Instant latestAllowedCookedTime = getLastAllowedCookedTime(order, restaurantAddress);
     return new TentativeBatch(batch, latestAllowedCookedTime);
   }
 
@@ -289,13 +326,9 @@ public class BatchingAlgorithm {
    */
   private Instant getLastAllowedCookedTime(Order firstOrder, String restaurantAddress) {
     int firstDeliverySeconds = secondsToMakeDelivery(restaurantAddress, firstOrder.destination);
-    Instant lastAllowedCookTime =
+    Instant lastAllowedCookedTime =
         firstOrder.deliveryTime.minus(Duration.ofSeconds(firstDeliverySeconds - 1));
-    if (lastAllowedCookTime.isBefore(firstOrder.cookedTime)) {
-      throw new IllegalStateException(
-          "Cannot have cooked time later than the latest allowed cooktime to deliver on time");
-    }
-    return lastAllowedCookTime;
+    return lastAllowedCookedTime;
   }
 
   /**

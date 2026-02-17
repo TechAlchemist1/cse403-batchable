@@ -71,6 +71,21 @@ public class DriverService {
   }
 
   /**
+   * Returns whether the given driver is currently available to accept a new batch.
+   *
+   * A driver is considered available if they are on shift and not already assigned to an active
+   * batch.
+   *
+   * @param driverId the unique identifier of the driver
+   * @return true if the driver is on shift and unassigned; false otherwise
+   * @throws IllegalArgumentException if no driver exists with the given ID
+   */
+  public boolean isAvailable(long driverId) {
+    Driver driver = getDriver(driverId);
+    return driver.onShift && getDriverBatch(driverId) == null;
+  }
+
+  /**
    * Retrieves driver by ID.
    *
    * Errors: - IllegalArgumentException if driverId does not exist

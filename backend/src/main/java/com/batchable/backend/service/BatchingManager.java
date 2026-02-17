@@ -41,6 +41,9 @@ public class BatchingManager {
   // Service for computing routes and durations
   private final RouteService routeService;
 
+  // Service for retrieving driver information
+  private final DriverService driverService;
+
   // Map of restaurant ID to its batching manager
   private final Map<Long, RestaurantBatchingManager> restaurantManagers = new HashMap<>();
 
@@ -56,12 +59,14 @@ public class BatchingManager {
    * @param orderService service for order and batch operations
    */
   public BatchingManager(OrderWebSocketPublisher publisher, BatchingAlgorithm batchingAlgorithm,
-      RestaurantService restaurantService, RouteService routeService, OrderService orderService) {
+      RestaurantService restaurantService, RouteService routeService, OrderService orderService,
+      DriverService driverService) {
     this.publisher = publisher;
     this.batchingAlgorithm = batchingAlgorithm;
     this.restaurantService = restaurantService;
     this.routeService = routeService;
     this.orderService = orderService;
+    this.driverService = driverService;
   }
 
   /**
@@ -74,8 +79,9 @@ public class BatchingManager {
     if (!restaurantManagers.containsKey(restaurantId)) {
       Restaurant restaurant = restaurantService.getRestaurant(restaurantId);
       String address = restaurant.location;
-      restaurantManagers.put(restaurantId, new RestaurantBatchingManager(restaurantId, address,
-          publisher, batchingAlgorithm, routeService, orderService));
+      restaurantManagers.put(restaurantId,
+          new RestaurantBatchingManager(restaurantId, address, publisher, batchingAlgorithm,
+              routeService, orderService, driverService, restaurantService, null));
     }
     return restaurantManagers.get(restaurantId);
   }

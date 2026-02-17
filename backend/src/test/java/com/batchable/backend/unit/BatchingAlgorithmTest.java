@@ -8,6 +8,7 @@ import com.batchable.backend.db.models.Order;
 import com.batchable.backend.db.models.Order.State;
 import com.batchable.backend.service.BatchingAlgorithm;
 import com.batchable.backend.service.BatchingAlgorithm.TentativeBatch;
+import com.batchable.backend.service.OrderService;
 import com.batchable.backend.service.RouteService;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +26,7 @@ import java.util.Set;
 
 class BatchingAlgorithmTest {
   private RouteService mockRouteService;
+  private OrderService mockOrderService;
   private BatchingAlgorithm batchingAlgorithm;
   private int SECONDS_TO_HAND_DELIVER;
   private int CEIL_MINS_TO_HAND_DELIVER;
@@ -34,7 +36,8 @@ class BatchingAlgorithmTest {
   @BeforeEach
   void setUp() {
     mockRouteService = mock(RouteService.class);
-    batchingAlgorithm = new BatchingAlgorithm(mockRouteService);
+    mockOrderService = mock(OrderService.class);
+    batchingAlgorithm = new BatchingAlgorithm(mockRouteService, mockOrderService);
     SECONDS_TO_HAND_DELIVER = batchingAlgorithm.getSecondsToHandDeliver();
     CEIL_MINS_TO_HAND_DELIVER = (SECONDS_TO_HAND_DELIVER + 59) / 60;
     ORDER_ID = 1;

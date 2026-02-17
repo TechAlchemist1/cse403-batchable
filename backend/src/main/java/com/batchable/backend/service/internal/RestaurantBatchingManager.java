@@ -16,7 +16,9 @@ import com.batchable.backend.model.dto.RouteDirectionsResponse;
 import com.batchable.backend.service.BatchingAlgorithm;
 import com.batchable.backend.service.RouteService;
 import com.batchable.backend.service.BatchingAlgorithm.TentativeBatch;
+import com.batchable.backend.service.DriverService;
 import com.batchable.backend.service.OrderService;
+import com.batchable.backend.service.RestaurantService;
 import com.batchable.backend.websocket.OrderWebSocketPublisher;
 
 /**
@@ -34,10 +36,11 @@ public class RestaurantBatchingManager {
   private final BatchingAlgorithm batchingAlgorithm;
   private final List<Consumer<Batches>> batchesChangeListeners = new ArrayList<>();
   private final List<Consumer<Batch>> batchBecomeActiveListeners = new ArrayList<>();
-  private final Batches batches = new Batches();
-  private final Queue<Driver> readyDrivers = new LinkedList<Driver>();
+  private final Batches batches;
   private final RouteService routeService;
   private final OrderService orderService;
+  private final DriverService driverService;
+  private final RestaurantService restaurantService;
   // time to add when an order isn't ready when it should be for batching
   private static final long SECONDS_ADDITIONAL_COOK_TIME = 180;
 
@@ -52,23 +55,31 @@ public class RestaurantBatchingManager {
    */
   public RestaurantBatchingManager(long restaurantId, String restaurantAddress,
       OrderWebSocketPublisher publisher, BatchingAlgorithm batchingAlgorithm,
-      RouteService routeService, OrderService orderService) {
+      RouteService routeService, OrderService orderService, DriverService driverService,
+      RestaurantService restaurantService, Batches batches) {
     this.restaurantId = restaurantId;
     this.restaurantAddress = restaurantAddress;
     this.publisher = publisher;
     this.batchingAlgorithm = batchingAlgorithm;
     this.routeService = routeService;
     this.orderService = orderService;
+    this.driverService = driverService;
+    this.restaurantService = restaurantService;
+    this.batches = (batches != null) ? batches : new Batches();
   }
 
   /**
    * Represents a batch that is ready to be assigned to a driver.
    */
-  private static class ReadyBatch {
+  public static class ReadyBatch {
     private final List<Order> batch;
 
-    private ReadyBatch(List<Order> batch) {
+    public ReadyBatch(List<Order> batch) {
       this.batch = new ArrayList<Order>(batch);
+    }
+
+    public List<Order> getBatch() {
+      return new ArrayList<Order>(batch);
     }
   }
 
@@ -76,9 +87,43 @@ public class RestaurantBatchingManager {
    * Holds all batches for this restaurant, separated by status.
    */
   public static class Batches {
-    public final List<TentativeBatch> tentativeBatches = new ArrayList<>();
-    public final Queue<ReadyBatch> readyBatches = new LinkedList<>();
-    public final List<Batch> activeBatches = new ArrayList<>();
+    private final List<TentativeBatch> tentativeBatches;
+    private final Queue<ReadyBatch> readyBatches;
+    private final List<Batch> activeBatches;
+
+    public Batches() {
+      this.tentativeBatches = new ArrayList<TentativeBatch>();
+      this.readyBatches = new LinkedList<ReadyBatch>();
+      this.activeBatches = new ArrayList<Batch>();
+    }
+
+    public Batches(List<TentativeBatch> tb, List<ReadyBatch> rb, List<Batch> ab) {
+      this.tentativeBatches = new ArrayList<TentativeBatch>(tb);
+      this.readyBatches = new LinkedList<ReadyBatch>(rb);
+      this.activeBatches = new ArrayList<Batch>(ab);
+    }
+
+    public Batches(List<TentativeBatch> tb, Queue<ReadyBatch> rb, List<Batch> ab) {
+      this.tentativeBatches = new ArrayList<TentativeBatch>(tb);
+      this.readyBatches = new LinkedList<ReadyBatch>(rb);
+      this.activeBatches = new ArrayList<Batch>(ab);
+    }
+
+    public List<TentativeBatch> getTentativeBatches() {
+      return new ArrayList<TentativeBatch>(tentativeBatches);
+    }
+
+    public Queue<ReadyBatch> getReadyBatches() {
+      return new LinkedList<ReadyBatch>(readyBatches);
+    }
+
+    public List<Batch> getActiveBatches() {
+      return new ArrayList<Batch>(activeBatches);
+    }
+  }
+
+  public Batches getBatches() {
+    return this.batches;
   }
 
   /**
@@ -212,7 +257,11 @@ public class RestaurantBatchingManager {
       List<Order> orders = tentativeBatch.getBatch();
       removeUncookedOrders(orders, toBeReAdded);
       if (!orders.isEmpty()) {
+        System.out.println("SHOULD BE TRUE");
         readyBatches.add(new ReadyBatch(orders));
+      } else {
+        System.out.println("WAS FALSE");
+
       }
     }
     return toBeReAdded;
@@ -242,8 +291,9 @@ public class RestaurantBatchingManager {
    */
   private void assignReadyBatchesToDrivers() {
     Queue<ReadyBatch> readyBatches = batches.readyBatches;
+    Queue<Driver> readyDrivers = getReadyDrivers(readyBatches.size());
 
-    while (!readyBatches.isEmpty() && !readyDrivers.isEmpty()) {
+    while (!readyDrivers.isEmpty()) {
       ReadyBatch readyBatch = readyBatches.poll();
       Driver driver = readyDrivers.poll();
 
@@ -272,6 +322,34 @@ public class RestaurantBatchingManager {
         orders.set(i, orderService.getOrder(order.id));
       }
     }
+  }
+
+  /**
+   * Returns a queue of drivers who are currently ready to accept a new batch, up to a specified
+   * maximum number.
+   *
+   * @param maxToGet the maximum number of ready drivers to retrieve; must be nonnegative
+   * @return a queue containing up to 'maxToGet' available drivers
+   * @throws IllegalArgumentException if maxToGet is less than zero
+   */
+  public Queue<Driver> getReadyDrivers(int maxToGet) {
+    if (maxToGet < 0) {
+      throw new IllegalArgumentException("maxToGet must be positive");
+    }
+    Queue<Driver> readyDrivers = new LinkedList<Driver>();
+    if (maxToGet == 0) {
+      return readyDrivers;
+    }
+    List<Driver> allDrivers = restaurantService.getRestaurantDrivers(restaurantId);
+    for (Driver d : allDrivers) {
+      if (driverService.isAvailable(d.id)) {
+        readyDrivers.add(d);
+        if (readyDrivers.size() == maxToGet) {
+          break;
+        }
+      }
+    }
+    return readyDrivers;
   }
 
   /**
@@ -330,7 +408,7 @@ public class RestaurantBatchingManager {
   private void removeUncookedOrders(List<Order> orders, List<Order> toBeReAdded) {
     for (int j = orders.size() - 1; j >= 0; j--) {
       Order order = orders.get(j);
-      if (order.state != State.COOKING) {
+      if (order.state != State.COOKED) {
         orders.remove(j);
         delayOrder(order);
         // important to re-get the order after updating
