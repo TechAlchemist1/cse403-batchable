@@ -3,8 +3,15 @@ package com.batchable.backend.service;
 // Client responsible for talking to Google Routes API
 import com.batchable.backend.client.GoogleRoutesClient;
 import com.batchable.backend.model.TravelMode;
+import com.batchable.backend.model.dto.DirectDirectionsRequest;
 // DTOs used to build requests and return responses
-import com.batchable.backend.model.dto.*;
+import com.batchable.backend.model.dto.DirectDirectionsResponse;
+import com.batchable.backend.model.dto.DistanceMatrixLocation;
+import com.batchable.backend.model.dto.DistanceMatrixRequest;
+import com.batchable.backend.model.dto.DistanceMatrixResponse;
+import com.batchable.backend.model.dto.RouteDirectionsRequest;
+import com.batchable.backend.model.dto.RouteDirectionsResponse;
+import com.batchable.backend.model.dto.Waypoint;
 // Marks this class as a Spring service (business logic layer)
 import org.springframework.stereotype.Service;
 import java.util.ArrayList;

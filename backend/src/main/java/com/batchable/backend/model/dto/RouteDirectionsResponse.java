@@ -7,7 +7,7 @@ import java.util.List;
  * DTO representing a simplified response from the Google Routes API, with optional legs.
  */
 public class RouteDirectionsResponse {
-
+  // A polyline is an encoded string of latitude/longitude coordinates representing a path or route
   private String polyline;
   private int distanceMeters;
   private int durationSeconds;
