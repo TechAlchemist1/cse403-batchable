@@ -11,6 +11,7 @@ In a less code-related sense, we also depend on [gts](https://github.com/google/
 ## Common Automated Operations
 `npm` scripts are the primary way for setting up automated tasks in this project, of which there are only a few:
 * `npm run dev`, which will start the front-end in development mode (with HMR!), without the server. This is likely to only work for the first week, right up until we need to depend on the back-end APIs.
+* `npm test`, which runs all of the UI and unit tests for the front-end. Passing the `-- --ui` option will open an [interactive test UI](https://vitest.dev/guide/ui.html) in the browser rather than the terminal. This includes a detailed code coverage report.
 * `npm run lint`, which will run the linter and formatter without changing any files, and produce a list of all the violations it found.
 * `npm run fix`, which is just like `lint` except it also tries to fix as much as it can. Please run this before committing code.
 
