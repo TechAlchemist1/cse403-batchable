@@ -63,11 +63,35 @@ jobs:
           distribution: 'temurin'
           cache: maven
       - name: Run CI Integration Tests
-        run: ./mvnw clean verify -Dtest=*IT_CI.java
+        run: ./mvnw clean verify -Dtest=*IT_CI.java -Djacoco.skip=true
       - name: Annotate CI Integration Test Results
         if: always()
         uses: dorny/test-reporter@v2
         with:
           name: CI Integration Tests
+          path: backend/target/surefire-reports/*.xml
+          reporter: java-junit
+
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+      - name: Run full verify
+        run: ./mvnw clean verify
+      - name: Annotate Verify Test Results
+        if: always()
+        uses: dorny/test-reporter@v2
+        with:
+          name: Full Verify
           path: backend/target/surefire-reports/*.xml
           reporter: java-junit

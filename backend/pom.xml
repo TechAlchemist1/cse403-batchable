@@ -125,6 +125,84 @@
 					</includes>
 				</configuration>
 			</plugin>
+
+			<!-- for test coverage-->
+			<plugin>
+			<groupId>org.jacoco</groupId>
+			<artifactId>jacoco-maven-plugin</artifactId>
+			<version>0.8.11</version>
+
+			<executions>
+				<!-- Attach the JaCoCo agent when tests run -->
+				<execution>
+				<id>prepare-agent</id>
+				<goals>
+					<goal>prepare-agent</goal>
+				</goals>
+				</execution>
+
+				<!-- Generate the HTML report at the end of the build -->
+				<execution>
+				<id>report</id>
+				<phase>verify</phase>
+				<goals>
+					<goal>report</goal>
+				</goals>
+				</execution>
+
+				<!-- Fail the build if coverage is too low -->
+				<execution>
+				<id>check</id>
+				<phase>verify</phase>
+				<goals>
+					<goal>check</goal>
+				</goals>
+				<configuration>
+					<rules>
+					<!-- Overall project coverage: 75% -->
+					<rule>
+						<element>BUNDLE</element>
+						<limits>
+						<limit>
+							<counter>LINE</counter>
+							<value>COVEREDRATIO</value>
+							<minimum>0.75</minimum> <!-- 75% minimum coverage overall -->
+						</limit>
+						</limits>
+					</rule>
+					<!-- Controllers should have 80% coverage -->
+					<rule>
+						<element>CLASS</element>
+						<limits>
+						<limit>
+							<counter>LINE</counter>
+							<value>COVEREDRATIO</value>
+							<minimum>0.80</minimum> <!-- 80% minimum for controllers -->
+						</limit>
+						</limits>
+						<includes>
+							<include>com.batachable.backend.controller.*</include>
+						</includes>
+					</rule>
+					<!-- Services should have 75% coverage -->
+					<rule>
+						<element>CLASS</element>
+						<limits>
+						<limit>
+							<counter>LINE</counter>
+							<value>COVEREDRATIO</value>
+							<minimum>0.75</minimum> <!-- 75% minimum for services -->
+						</limit>
+						</limits>
+						<includes>
+							<include>**/service/**</include>
+						</includes>
+					</rule>
+					</rules>
+				</configuration>
+				</execution>
+			</executions>
+			</plugin>
 		</plugins>
 	</build>
 
