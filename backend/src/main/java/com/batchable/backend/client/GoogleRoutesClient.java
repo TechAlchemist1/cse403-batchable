@@ -18,8 +18,7 @@ public class GoogleRoutesClient {
       @Value("${google.routes.api-key}") String apiKey) {
     if (apiKey == null || apiKey.isBlank()) {
       throw new IllegalStateException(
-          "Google Routes API key is not configured. Set GOOGLE_ROUTES_API_KEY."
-      );
+          "Google Routes API key is not configured. Set GOOGLE_ROUTES_API_KEY.");
     }
     this.webClient = webClient;
     this.apiKey = apiKey;
@@ -29,14 +28,39 @@ public class GoogleRoutesClient {
    * Calls Google's Directions API and returns a parsed response. Automatically includes the
    * required FieldMask header.
    */
-  public DirectionsResponse getDirections(DirectionsRequest request) {
+  public DirectDirectionsResponse getDirectDirections(DirectDirectionsRequest request) {
     try {
-      DirectionsResponse.GoogleResponse googleResponse = webClient.post()
+      DirectDirectionsResponse.GoogleResponse googleResponse = webClient.post()
           .uri(uriBuilder -> uriBuilder.path("/directions/v2:computeRoutes")
               .queryParam("key", apiKey).build())
           .header("X-Goog-FieldMask", "routes.distanceMeters,routes.duration").bodyValue(request)
-          .retrieve().bodyToMono(DirectionsResponse.GoogleResponse.class).block();
-      return new DirectionsResponse(googleResponse);
+          .retrieve().bodyToMono(DirectDirectionsResponse.GoogleResponse.class).block();
+      return new DirectDirectionsResponse(googleResponse);
+    } catch (WebClientResponseException e) {
+      throw new RuntimeException(
+          "Google API error: " + e.getStatusCode() + " " + e.getResponseBodyAsString());
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to call Google Routes API", e);
+    }
+  }
+
+  /**
+   * Calls Google's Directions API and returns a parsed response. Automatically includes the
+   * required FieldMask header.
+   */
+  public RouteDirectionsResponse getRouteDirections(RouteDirectionsRequest request,
+      boolean includeLegs) {
+    String fieldMask = "routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline";
+    if (includeLegs) {
+      fieldMask += ",routes.legs";
+    }
+    try {
+      RouteDirectionsResponse.GoogleResponse googleResponse = webClient.post()
+          .uri(uriBuilder -> uriBuilder.path("/directions/v2:computeRoutes")
+              .queryParam("key", apiKey).build())
+          .header("X-Goog-FieldMask", fieldMask).bodyValue(request).retrieve()
+          .bodyToMono(RouteDirectionsResponse.GoogleResponse.class).block();
+      return new RouteDirectionsResponse(googleResponse);
     } catch (WebClientResponseException e) {
       throw new RuntimeException(
           "Google API error: " + e.getStatusCode() + " " + e.getResponseBodyAsString());
@@ -55,12 +79,10 @@ public class GoogleRoutesClient {
       List<DistanceMatrixResponse.MatrixElement> elements = webClient.post()
           .uri(uriBuilder -> uriBuilder.path("/distanceMatrix/v2:computeRouteMatrix")
               .queryParam("key", apiKey).build())
-          .header("X-Goog-FieldMask", "originIndex,destinationIndex,duration,distanceMeters,condition")
-          .bodyValue(request)
-          .retrieve()
-          .bodyToFlux(DistanceMatrixResponse.MatrixElement.class)
-          .collectList()
-          .block();
+          .header("X-Goog-FieldMask",
+              "originIndex,destinationIndex,duration,distanceMeters,condition")
+          .bodyValue(request).retrieve().bodyToFlux(DistanceMatrixResponse.MatrixElement.class)
+          .collectList().block();
 
       // Now convert to your 2D int matrix
       return new DistanceMatrixResponse(elements, true);

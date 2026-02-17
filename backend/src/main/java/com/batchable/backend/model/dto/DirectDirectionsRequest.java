@@ -9,7 +9,7 @@ import com.batchable.backend.model.TravelMode;
  * - Holds the data needed to compute directions between an origin and a destination.
  * - Used by GoogleRoutesClient to serialize into JSON for the API request.
  */
-public class DirectionsRequest {
+public class DirectDirectionsRequest {
 
   // Starting location for the route.
   // Represented as a Waypoint object (address or coordinates)
@@ -25,7 +25,7 @@ public class DirectionsRequest {
   /**
    * Default constructor required for Spring / Jackson to deserialize JSON.
    */
-  public DirectionsRequest() {}
+  public DirectDirectionsRequest() {}
 
   /**
    * Convenience constructor to quickly create a DirectionsRequest.
@@ -34,7 +34,7 @@ public class DirectionsRequest {
    * @param destination Ending location as a Waypoint
    * @param travelMode Mode of travel
    */
-  public DirectionsRequest(Waypoint origin, Waypoint destination, TravelMode travelMode) {
+  public DirectDirectionsRequest(Waypoint origin, Waypoint destination, TravelMode travelMode) {
     this.origin = origin;
     this.destination = destination;
     this.travelMode = travelMode;

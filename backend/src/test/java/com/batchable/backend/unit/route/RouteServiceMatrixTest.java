@@ -1,4 +1,4 @@
-package com.batchable.backend.unit;
+package com.batchable.backend.unit.route;
 
 import com.batchable.backend.client.GoogleRoutesClient;
 import com.batchable.backend.model.dto.DistanceMatrixResponse;

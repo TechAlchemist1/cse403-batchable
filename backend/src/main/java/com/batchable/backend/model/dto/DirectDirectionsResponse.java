@@ -9,7 +9,7 @@ import java.util.List;
  * Used by the service/controller layer to return JSON to clients. - Can be serialized/deserialized
  * automatically by Spring (Jackson).
  */
-public class DirectionsResponse {
+public class DirectDirectionsResponse {
 
   // Distance in meters (e.g., 10000 meters)
   // Useful for calculations, sorting, or aggregations
@@ -22,14 +22,14 @@ public class DirectionsResponse {
   /**
    * Default constructor required by Spring / Jackson for JSON deserialization.
    */
-  public DirectionsResponse() {}
+  public DirectDirectionsResponse() {}
 
   /**
    * Constructor to build a flat DirectionsResponse from Google’s nested response.
    *
    * @param googleResponse GoogleResponse parsed from the API JSON
    */
-  public DirectionsResponse(GoogleResponse googleResponse) {
+  public DirectDirectionsResponse(GoogleResponse googleResponse) {
     if (googleResponse.getRoutes() != null && !googleResponse.getRoutes().isEmpty()) {
       GoogleResponse.Route firstRoute = googleResponse.getRoutes().get(0);
       this.distanceMeters = firstRoute.getDistanceMeters();
