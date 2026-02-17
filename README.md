@@ -13,6 +13,20 @@ $ git config --global autocrlf false
 ```
 Thank you!
 
+## Backend (Local Development)
+To run the backend locally:
+```bash
+cd backend
+./mvnw spring-boot:run
+```
+### Coverage
+#### Prerequisites
+- Ensure GOOGLE_API_ROUTES_KEY = "key"
+- Ensure Docker Desktop is running
+
+To run code coverage: `./mvnw verify`
+Look for coverage results in `backend/target/site/jacoco/index.html`
+
 ## Database (Local Development)
 
 We use Postgres running in Docker for local development. The database data persist via Docker and Schema/Migrations will live under infra/postgres
