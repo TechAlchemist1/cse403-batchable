@@ -74,6 +74,7 @@ public class OrderService {
     }
 
     try {
+      // batch ids initialized to null then filled in later 
       long id = orderDAO.createOrder(
           order.restaurantId,
           order.destination,
@@ -291,12 +292,12 @@ public class OrderService {
    * Errors:
    *  - IllegalArgumentException if batchId does not exist
    */
-  public Order[] getBatchOrders(long batchId) {
+  public List<Order> getBatchOrders(long batchId) {
     getBatch(batchId); // validate exists
 
     try {
       List<Order> orders = orderDAO.listOrdersInBatch(batchId);
-      return orders.toArray(new Order[0]);
+      return orders;
     } catch (SQLException e) {
       throw new RuntimeException("Failed to list batch orders", e);
     }
@@ -377,6 +378,8 @@ public class OrderService {
     // Domain rule: no changes if delivered
     if (order.state == Order.State.DELIVERED) {
       throw new IllegalStateException("Delivered orders cannot be reassigned to a batch");
+    } else if (order.state == Order.State.DRIVING) {
+      throw new IllegalStateException("Driving orders cannot be reassigned to a batch");
     }
 
     // Validate batch exists

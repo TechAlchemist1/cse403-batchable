@@ -1,6 +1,12 @@
 package com.batchable.backend.service;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.*;
 
 import com.batchable.backend.db.dao.BatchDAO;
@@ -392,14 +398,16 @@ public class OrderServiceTest {
     Order o2 = order(2, 7, "D2", "[]", Instant.now(), null, null, Order.State.COOKED, true, 9L);
     when(orderDAO.listOrdersInBatch(9L)).thenReturn(List.of(o1, o2));
 
-    Order[] arr = service.getBatchOrders(9L);
-    assertEquals(2, arr.length);
-    assertEquals(1L, arr[0].id);
-    assertEquals(2L, arr[1].id);
+    List<Order> orders = service.getBatchOrders(9L);
+
+    assertEquals(2, orders.size());
+    assertEquals(1L, orders.get(0).id);
+    assertEquals(2L, orders.get(1).id);
 
     verify(batchDAO).getBatch(9L);
     verify(orderDAO).listOrdersInBatch(9L);
   }
+
 
   // ---- setOrderBatchId ----
 

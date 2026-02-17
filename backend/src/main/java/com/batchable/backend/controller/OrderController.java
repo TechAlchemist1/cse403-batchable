@@ -4,6 +4,7 @@ import com.batchable.backend.db.models.Batch;
 import com.batchable.backend.db.models.Order;
 import com.batchable.backend.service.OrderService;
 import java.time.Instant;
+import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -116,7 +117,7 @@ public class OrderController {
    */
   @GetMapping("/batch/{batchId}/orders")
   @ResponseStatus(HttpStatus.OK)
-  public Order[] getBatchOrders(@PathVariable long batchId) {
+  public List<Order> getBatchOrders(@PathVariable long batchId) {
     return orderService.getBatchOrders(batchId);
   }
 

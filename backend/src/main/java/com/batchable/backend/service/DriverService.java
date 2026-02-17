@@ -90,7 +90,9 @@ public class DriverService {
       }
 
       // No-op allowed
-      if (existing.onShift == onShift) return;
+      if (existing.onShift == onShift) {
+        return;
+      }
 
       driverDAO.setDriverShift(driverId, onShift);
 
