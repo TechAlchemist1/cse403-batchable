@@ -2,28 +2,55 @@ package com.batchable.backend.db.dao;
 
 import com.batchable.backend.db.models.Driver;
 
+import javax.sql.DataSource;
+
+import org.springframework.stereotype.Repository;
 
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-public final class DriverDAO {
-    private final Connection conn;
+/**
+ * Data Access Object for Driver table.
+ *
+ * Responsible ONLY for direct database interaction.
+ * No business logic should live here.
+ */
+@Repository
+public class DriverDAO {
 
-    public DriverDAO(Connection conn) {
-        this.conn = conn;
+    // Spring-managed connection pool source
+    private final DataSource dataSource;
+
+    /**
+     * Constructor injection of DataSource.
+     * Spring will provide this automatically.
+     */
+    public DriverDAO(DataSource dataSource) {
+        this.dataSource = dataSource;
     }
 
-    public long createDriver(long restaurantId, String name, String phoneNumber, boolean onShift) throws SQLException {
+    /**
+     * Creates a new driver row and returns the generated ID.
+     */
+    public long createDriver(long restaurantId,
+                             String name,
+                             String phoneNumber,
+                             boolean onShift) throws SQLException {
+
         final String sql =
                 "INSERT INTO Driver(restaurant_id, name, phone_number, on_shift) " +
                 "VALUES (?, ?, ?, ?) RETURNING id;";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
             ps.setLong(1, restaurantId);
             ps.setString(2, name);
             ps.setString(3, phoneNumber);
             ps.setBoolean(4, onShift);
+
             try (ResultSet rs = ps.executeQuery()) {
                 rs.next();
                 return rs.getLong("id");
@@ -31,14 +58,24 @@ public final class DriverDAO {
         }
     }
 
+    /**
+     * Retrieves a driver by ID.
+     * Returns Optional.empty() if not found.
+     */
     public Optional<Driver> getDriver(long driverId) throws SQLException {
+
         final String sql =
                 "SELECT id, restaurant_id, name, phone_number, on_shift " +
                 "FROM Driver WHERE id = ?;";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
             ps.setLong(1, driverId);
+
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) return Optional.empty();
+
                 return Optional.of(new Driver(
                         rs.getLong("id"),
                         rs.getLong("restaurant_id"),
@@ -50,16 +87,30 @@ public final class DriverDAO {
         }
     }
 
+    /**
+     * Updates only the on_shift flag for a driver.
+     */
     public void setDriverShift(long driverId, boolean onShift) throws SQLException {
+
         final String sql = "UPDATE Driver SET on_shift = ? WHERE id = ?;";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
             ps.setBoolean(1, onShift);
             ps.setLong(2, driverId);
             ps.executeUpdate();
         }
     }
 
-    public List<Driver> listDriversForRestaurant(long restaurantId, boolean onShiftOnly) throws SQLException {
+    /**
+     * Lists all drivers for a given restaurant.
+     * If onShiftOnly is true, filters to only on-shift drivers.
+     */
+    public List<Driver> listDriversForRestaurant(long restaurantId,
+                                                 boolean onShiftOnly)
+            throws SQLException {
+
         final String sql =
                 "SELECT id, restaurant_id, name, phone_number, on_shift " +
                 "FROM Driver " +
@@ -68,8 +119,12 @@ public final class DriverDAO {
                 "ORDER BY id;";
 
         List<Driver> out = new ArrayList<>();
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
             ps.setLong(1, restaurantId);
+
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     out.add(new Driver(
@@ -82,6 +137,67 @@ public final class DriverDAO {
                 }
             }
         }
+
         return out;
+    }
+
+    /**
+     * Updates mutable driver fields
+     * (NOT id, NOT restaurant_id, NOT on_shift).
+     */
+    public boolean updateDriver(long driverId,
+                                String name,
+                                String phoneNumber)
+            throws SQLException {
+
+        final String sql =
+                "UPDATE Driver SET name = ?, phone_number = ? WHERE id = ?;";
+
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setString(1, name);
+            ps.setString(2, phoneNumber);
+            ps.setLong(3, driverId);
+
+            return ps.executeUpdate() == 1;
+        }
+    }
+
+    /**
+     * Deletes a driver row by id.
+     * Returns true if a row was deleted.
+     */
+    public boolean deleteDriver(long driverId) throws SQLException {
+
+        final String sql = "DELETE FROM Driver WHERE id = ?;";
+
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setLong(1, driverId);
+            return ps.executeUpdate() == 1;
+        }
+    }
+
+    /**
+     * Returns true if any driver for the restaurant
+     * is currently on shift.
+     */
+    public boolean hasOnShiftDrivers(long restaurantId) throws SQLException {
+
+        final String sql =
+                "SELECT 1 FROM Driver WHERE restaurant_id = ? " +
+                "AND on_shift = TRUE LIMIT 1;";
+
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setLong(1, restaurantId);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
     }
 }

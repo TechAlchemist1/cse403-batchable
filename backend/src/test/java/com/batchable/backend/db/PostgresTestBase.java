@@ -3,6 +3,7 @@ package com.batchable.backend.db;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.testcontainers.containers.PostgreSQLContainer;
+import com.batchable.backend.db.PostgresTestBase;
 
 import java.io.IOException;
 import java.nio.file.*;

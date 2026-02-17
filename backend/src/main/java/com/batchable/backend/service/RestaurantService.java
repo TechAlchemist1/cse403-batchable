@@ -1,9 +1,14 @@
 package com.batchable.backend.service;
 
+import com.batchable.backend.db.dao.DriverDAO;
+import com.batchable.backend.db.dao.MenuItemDAO;
+import com.batchable.backend.db.dao.OrderDAO;
+import com.batchable.backend.db.dao.RestaurantDAO;
 import com.batchable.backend.db.models.Driver;
 import com.batchable.backend.db.models.MenuItem;
 import com.batchable.backend.db.models.Order;
 import com.batchable.backend.db.models.Restaurant;
+import java.sql.SQLException;
 import java.util.List;
 import org.springframework.stereotype.Service;
 
@@ -21,7 +26,21 @@ import org.springframework.stereotype.Service;
 @Service
 public class RestaurantService {
 
-  public RestaurantService() {}
+  private final RestaurantDAO restaurantDAO;
+  private final OrderDAO orderDAO;
+  private final DriverDAO driverDAO;
+  private final MenuItemDAO menuItemDAO;
+
+  public RestaurantService(
+      RestaurantDAO restaurantDAO,
+      OrderDAO orderDAO,
+      DriverDAO driverDAO,
+      MenuItemDAO menuItemDAO) {
+    this.restaurantDAO = restaurantDAO;
+    this.orderDAO = orderDAO;
+    this.driverDAO = driverDAO;
+    this.menuItemDAO = menuItemDAO;
+  }
 
   /**
    * Creates a new restaurant in the system.
@@ -35,14 +54,40 @@ public class RestaurantService {
    *  - Restaurant must have a unique identifier
    *  - Required identifying fields must be non-null
    *
+   * Behavior:
+   *  - Frontend may pass a dummy id (<= 0)
+   *  - Database generates the real id
+   *  - The generated id is returned to caller
+   *
    * Errors:
    *  - IllegalArgumentException if required fields are missing or invalid
    *  - IllegalStateException if restaurant already exists
    *  - RuntimeException if persistence fails
    */
-  public void createRestaurant(Restaurant restaurant) {
-    // TODO
-    throw new UnsupportedOperationException("Not implemented yet");
+  public long createRestaurant(Restaurant restaurant) {
+    if (restaurant == null)
+      throw new IllegalArgumentException("restaurant is required");
+
+    if (restaurant.name == null || restaurant.name.trim().isEmpty())
+      throw new IllegalArgumentException("name is required");
+
+    if (restaurant.location == null || restaurant.location.trim().isEmpty())
+      throw new IllegalArgumentException("location is required");
+
+    // Allow dummy id (negative or 0) from frontend.
+    // Only reject if a positive id is supplied during creation.
+    if (restaurant.id > 0)
+      throw new IllegalStateException("restaurant.id must be <= 0 (database-generated)");
+
+    try {
+      if (restaurantDAO.restaurantExistsByName(restaurant.name))
+        throw new IllegalStateException("Restaurant already exists: " + restaurant.name);
+
+      return restaurantDAO.createRestaurant(restaurant.name, restaurant.location);
+
+    } catch (SQLException e) {
+      throw new RuntimeException("Failed to create restaurant", e);
+    }
   }
 
   /**
@@ -66,8 +111,33 @@ public class RestaurantService {
    *  - RuntimeException if persistence fails
    */
   public void updateRestaurant(long restaurantId, Restaurant restaurant) {
-    // TODO
-    throw new UnsupportedOperationException("Not implemented yet");
+    if (restaurantId <= 0)
+      throw new IllegalArgumentException("restaurantId must be positive");
+
+    if (restaurant == null)
+      throw new IllegalArgumentException("restaurant data required");
+
+    if (restaurant.name == null || restaurant.name.trim().isEmpty())
+      throw new IllegalArgumentException("name is required");
+
+    if (restaurant.location == null || restaurant.location.trim().isEmpty())
+      throw new IllegalArgumentException("location is required");
+
+    try {
+      if (!restaurantDAO.restaurantExists(restaurantId))
+        throw new IllegalArgumentException("Restaurant not found: " + restaurantId);
+
+      if (restaurantDAO.restaurantExistsByNameExcludingId(
+          restaurantId, restaurant.name))
+        throw new IllegalStateException("Another restaurant already uses that name");
+
+      boolean ok = restaurantDAO.updateRestaurant(restaurantId, restaurant.name, restaurant.location);
+      if (!ok)
+        throw new IllegalArgumentException("Restaurant not found: " + restaurantId);
+
+    } catch (SQLException e) {
+      throw new RuntimeException("Failed to update restaurant", e);
+    }
   }
 
   /**
@@ -77,8 +147,15 @@ public class RestaurantService {
    *  - IllegalArgumentException if restaurantId does not exist
    */
   public Restaurant getRestaurant(long restaurantId) {
-    // TODO
-    throw new UnsupportedOperationException("Not implemented yet");
+    if (restaurantId <= 0)
+      throw new IllegalArgumentException("restaurantId must be positive");
+
+    try {
+      return restaurantDAO.getRestaurant(restaurantId)
+          .orElseThrow(() -> new IllegalArgumentException("Restaurant not found: " + restaurantId));
+    } catch (SQLException e) {
+      throw new RuntimeException("Failed to retrieve restaurant", e);
+    }
   }
 
   /**
@@ -105,9 +182,27 @@ public class RestaurantService {
    *  - RuntimeException if persistence fails
    */
   public void removeRestaurant(long restaurantId) {
-    // TODO
-    throw new UnsupportedOperationException("Not implemented yet");
-  }   
+    if (restaurantId <= 0)
+      throw new IllegalArgumentException("restaurantId must be positive");
+
+    try {
+      if (!restaurantDAO.restaurantExists(restaurantId))
+        throw new IllegalArgumentException("Restaurant not found: " + restaurantId);
+
+      if (orderDAO.hasActiveOrdersForRestaurant(restaurantId))
+        throw new IllegalStateException("Restaurant has active orders");
+
+      if (driverDAO.hasOnShiftDrivers(restaurantId))
+        throw new IllegalStateException("Restaurant has drivers currently on shift");
+
+      boolean ok = restaurantDAO.deleteRestaurant(restaurantId);
+      if (!ok)
+        throw new IllegalArgumentException("Restaurant not found: " + restaurantId);
+
+    } catch (SQLException e) {
+      throw new RuntimeException("Failed to remove restaurant", e);
+    }
+  }
 
   /**
    * Returns all active orders for a given restaurant.
@@ -119,8 +214,13 @@ public class RestaurantService {
    *  - IllegalArgumentException if restaurantId does not exist
    */
   public List<Order> getRestaurantOrders(long restaurantId) {
-    // TODO
-    throw new UnsupportedOperationException("Not implemented yet");
+    getRestaurant(restaurantId); // validate exists
+
+    try {
+      return orderDAO.listOpenOrdersForRestaurant(restaurantId);
+    } catch (SQLException e) {
+      throw new RuntimeException("Failed to list restaurant orders", e);
+    }
   }
 
   /**
@@ -137,8 +237,13 @@ public class RestaurantService {
    *  - IllegalArgumentException if restaurantId does not exist
    */
   public List<Driver> getRestaurantDrivers(long restaurantId) {
-    // TODO
-    throw new UnsupportedOperationException("Not implemented yet");
+    getRestaurant(restaurantId);
+
+    try {
+      return driverDAO.listDriversForRestaurant(restaurantId, false);
+    } catch (SQLException e) {
+      throw new RuntimeException("Failed to list restaurant drivers", e);
+    }
   }
 
   /**
@@ -152,7 +257,12 @@ public class RestaurantService {
    *  - IllegalArgumentException if restaurantId does not exist
    */
   public List<MenuItem> getRestaurantMenuItems(long restaurantId) {
-    // TODO
-    throw new UnsupportedOperationException("Not implemented yet");
+    getRestaurant(restaurantId);
+
+    try {
+      return menuItemDAO.listMenuItems(restaurantId);
+    } catch (SQLException e) {
+      throw new RuntimeException("Failed to list restaurant menu items", e);
+    }
   }
 }
