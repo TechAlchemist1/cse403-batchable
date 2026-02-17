@@ -193,18 +193,11 @@ public class BatchingAlgorithm {
       TentativeBatch tentativeBatch = batches.get(i);
 
       if (order.cookedTime.isAfter(tentativeBatch.latestAllowedCookedTime)) {
-        System.out.println("\nAFTER LATEST!!!");
-        System.out.println("first order delivery time " + tentativeBatch.batch.get(0).deliveryTime);
-        System.out.println("first order cooked time " + tentativeBatch.batch.get(0).cookedTime);
-        System.out.println("latest allowed cooked time " + tentativeBatch.latestAllowedCookedTime);
-        System.out.println("curr order cooked time " + order.cookedTime);
         continue; // cannot fit in this batch
       }
 
       int insertionInd = findInsertionIndex(tentativeBatch.batch, order);
       if (!canInsertAt(tentativeBatch.batch, order, insertionInd)) {
-        System.out.println("\nVIOLATES DELIV!!!!");
-        System.out.println("couldnt insert in batch " + i + " at index " + insertionInd);
         continue; // violates delivery ordering
       }
 
@@ -213,24 +206,13 @@ public class BatchingAlgorithm {
       // Reinsert batch if first order changed to maintain descending order by
       // latestAllowedCookedTime
       if (insertionInd == 0) {
-        System.out.println("\n!!!REINSERTING!\n!");
         tentativeBatch.latestAllowedCookedTime = getLastAllowedCookedTime(order, restaurantAddress);
         batches.remove(i);
         insertBatch(batches, tentativeBatch);
       }
-      printBatchSizes(batches);
       return;
     }
     insertBatch(batches, createNewBatchWithOrder(order, restaurantAddress));
-    printBatchSizes(batches);
-
-  }
-
-  private void printBatchSizes(List<TentativeBatch> l) {
-    System.out.println("\nNUM BATCHES: " + l.size());
-    for (int i = 0; i < l.size(); i++) {
-      System.out.println("NUM ORDERS IN BATCH " + i + ": " + l.get(i).batch.size());
-    }
   }
 
   /**
@@ -345,8 +327,6 @@ public class BatchingAlgorithm {
    */
   private int secondsToMakeDelivery(String from, String to) {
     String key = from + "→" + to;
-    System.out.println("from: " + from);
-    System.out.println("to: " + to);
     try {
       return travelTimeCache.get(key,
           () -> routeService.getSecondsBetween(from, to) + SECONDS_TO_HAND_DELIVER);
