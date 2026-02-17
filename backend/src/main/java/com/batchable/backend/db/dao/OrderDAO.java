@@ -160,24 +160,6 @@ public final class OrderDAO {
         }
     }
 
-    public boolean assignOrderToBatch(long orderId, long batchId) throws SQLException {
-        final String sql = "UPDATE \"Order\" SET batch_id = ? WHERE id = ?;";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setLong(1, batchId);
-            ps.setLong(2, orderId);
-            return ps.executeUpdate() == 1;
-        }
-    }
-
-    public boolean unassignOrderFromBatch(long orderId) throws SQLException {
-        final String sql = "UPDATE \"Order\" SET batch_id = NULL WHERE id = ?;";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setLong(1, orderId);
-            return ps.executeUpdate() == 1;
-        }
-    }
-
-
     public List<Order> listOrdersInBatch(long batchId) throws SQLException {
         final String sql =
                 "SELECT id, restaurant_id, destination, item_names, initial_time, delivery_time, cooked_time, " +
@@ -241,4 +223,25 @@ public final class OrderDAO {
             }
         }
     }
+
+    /** Returns true if exactly one row updated (order existed). */
+    public boolean updateOrderBatchId(long orderId, long batchId) throws SQLException {
+        final String sql = "UPDATE \"Order\" SET batch_id = ? WHERE id = ?;";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, batchId);
+            ps.setLong(2, orderId);
+            return ps.executeUpdate() == 1;
+        }
+    }
+
+    /** Returns true if exactly one row updated (order existed). */
+    public boolean clearOrderBatchId(long orderId) throws SQLException {
+        final String sql = "UPDATE \"Order\" SET batch_id = NULL WHERE id = ?;";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, orderId);
+            return ps.executeUpdate() == 1;
+        }
+    }
+
+
 }
