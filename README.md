@@ -14,7 +14,7 @@ Download Docker Desktop [here](https://www.docker.com/products/docker-desktop/)
 
 Make sure you have Docker Desktop installed and running, and at the bottom left it says engine is running
 
-# Running the app!
+# Running the App!
 
 Put the env file sent in Ed into vars.env in the root of the project.
 Then, while still in the root, execute the following in a sh-compatible terminal:
@@ -28,32 +28,34 @@ chmod +x ./build.sh
 ./run.sh
 ```
 
-Follow this link to take you to the virtual Phone where you will recieve the text confirmation https://console.twilio.com/us1/develop/sms/virtual-phone
-You'll need to log in using the provided credentials:\
-User email: (see Ed)\
-password: (See Ed)\
+and go to: http://localhost:5173
 
-select recovery code as verification method when logging in:
+**We currently only support the creation of orders**
+
+Follow [this link](https://console.twilio.com/us1/develop/sms/virtual-phone) to take you to the virtual phone where you will recieve the text confirmation\
+You'll need to log in using the provided credentials:\
+User Email: (see Ed)\
+Password: (see Ed)
+
+Select try another method rather than sending 6-digit recovery code\
+Select recovery code as verification method when logging in:
 
 From there you will see a drop down on the right side with the text " Choose a sender number" click on it and select the only number available.
-All confimation will be sent to this virtual number and will act as a mock phone
+**Order creations will text the order id to this phone**
 
-## Code Coverage (front end and back end)
+## Code Coverage (front-end and back-end)
 
-Ensure Docker Desktop is running
+Ensure Docker Desktop is running\
 `$ docker` should return docker commands
 
-### Frontend code coverage
-
+### Front-end code coverage
+From the `frontend` directory:
 ```bash
-cd frontend
 npm test
 ```
 
-### Backend code coverage
-
-To run code coverage:
-
+### Back-end code coverage
+From the `backend` directory:
 ```bash
 ./mvnw verify
 ```
