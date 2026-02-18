@@ -1,28 +1,33 @@
 import {describe, expect, it} from 'vitest';
-import {
-  batch,
-  driver,
-  menuItem,
-  order,
-  restaurant,
-  type JSONDomainObject,
-  type JSONParserPair,
-} from '~/domain/json';
+import * as json from '~/domain/json';
+import type {
+  Restaurant,
+  DomainObject,
+  Batch,
+  Order,
+  MenuItem,
+  Driver,
+} from '~/domain/objects';
 
-function testPair<T>(
-  parserPair: JSONParserPair<T>,
-  json: JSONDomainObject<T>,
+function testPair<T extends DomainObject>(
+  parserPair: json.JSONParserPair<T>,
+  json: json.JSONDomainObject<T>,
   domainObject: T,
   reversable: boolean = true,
 ) {
   expect(parserPair.parse(json)).toEqual(domainObject);
-  if (reversable) expect(parserPair.unparse(domainObject)).toEqual(json);
+  if (reversable) {
+    expect(parserPair.unparse(domainObject)).toEqual(json);
+    expect(parserPair.parse(parserPair.unparse(domainObject))).toEqual(
+      domainObject,
+    );
+  }
 }
 
 describe('Restaurant parsing', () => {
   it('parses a valid Restaurant', () => {
-    testPair(
-      restaurant,
+    testPair<Restaurant>(
+      json.restaurant,
       {
         id: 5,
         location: '1600 Pennsylvania Avenue NW, Washington, DC 20500',
@@ -42,8 +47,8 @@ describe('Restaurant parsing', () => {
   });
 
   it('survives an invalid WorldLocation', () => {
-    testPair(
-      restaurant,
+    testPair<Restaurant>(
+      json.restaurant,
       {
         id: 173,
         location: '978164HKASDG&Q@^',
@@ -65,8 +70,8 @@ describe('Restaurant parsing', () => {
 
 describe('Driver parsing', () => {
   it('parses a valid Driver', () => {
-    testPair(
-      driver,
+    testPair<Driver>(
+      json.driver,
       {
         id: 98712,
         phoneNumber: '9782372819',
@@ -79,7 +84,9 @@ describe('Driver parsing', () => {
           type: 'Driver',
           id: 98712,
         },
-        phoneNumber: '9782372819',
+        phoneNumber: {
+          compact: '9782372819',
+        },
         restaurant: {
           type: 'Restaurant',
           id: 1238,
@@ -93,17 +100,22 @@ describe('Driver parsing', () => {
 
 describe('Order parsing', () => {
   it('parses a valid Order', () => {
-    testPair(
-      order,
+    const now = Date.now();
+    const initialTime = new Date(now);
+    const deliveryTime = new Date(now + 1.5e3);
+    const cookedTime = new Date(now + 1e3);
+    expect(new Date(new Date(now).toISOString())).toEqual(new Date(now));
+    testPair<Order>(
+      json.order,
       {
         id: 8129387,
         restaurant: 124192,
         destination: '1600 Pennsylvania Avenue NW, Washington, DC 20500',
-        itemNames: ['Tragedy', 'Comedy'],
-        initialTime: 'Fri, 29 Aug 2003 08:30:00 GMT',
-        deliveryTime: 'Fri, 29 Aug 2003 08:30:00 GMT',
-        cookedTime: 'Fri, 29 Aug 2003 08:30:00 GMT',
-        state: 'cooked',
+        itemNames: '["Tragedy","Comedy"]',
+        initialTime: initialTime.toISOString(),
+        deliveryTime: deliveryTime.toISOString(),
+        cookedTime: cookedTime.toISOString(),
+        state: 'COOKED',
         highPriority: true,
         currentBatch: 19237245,
       },
@@ -120,9 +132,9 @@ describe('Order parsing', () => {
           address: '1600 Pennsylvania Avenue NW, Washington, DC 20500',
         },
         itemNames: ['Tragedy', 'Comedy'],
-        initialTime: new Date('Fri, 29 Aug 2003 08:30:00 GMT'),
-        deliveryTime: new Date('Fri, 29 Aug 2003 08:30:00 GMT'),
-        cookedTime: new Date('Fri, 29 Aug 2003 08:30:00 GMT'),
+        initialTime,
+        deliveryTime,
+        cookedTime,
         state: 'cooked',
         highPriority: true,
         currentBatch: {
@@ -134,17 +146,17 @@ describe('Order parsing', () => {
   });
 
   it('survives a null batch', () => {
-    testPair(
-      order,
+    testPair<Order>(
+      json.order,
       {
         id: 8129387,
         restaurant: 124192,
         destination: '1600 Pennsylvania Avenue NW, Washington, DC 20500',
-        itemNames: [],
-        initialTime: 'Fri, 29 Aug 2003 08:30:00 GMT',
-        deliveryTime: 'Fri, 29 Aug 2003 08:30:00 GMT',
-        cookedTime: 'Fri, 29 Aug 2003 08:30:00 GMT',
-        state: 'cooked',
+        itemNames: '[]',
+        initialTime: '2003-08-29T08:30:00.000Z',
+        deliveryTime: '2003-08-29T08:30:00.000Z',
+        cookedTime: '2003-08-29T08:30:00.000Z',
+        state: 'COOKED',
         highPriority: true,
         currentBatch: null,
       },
@@ -161,9 +173,9 @@ describe('Order parsing', () => {
           address: '1600 Pennsylvania Avenue NW, Washington, DC 20500',
         },
         itemNames: [],
-        initialTime: new Date('Fri, 29 Aug 2003 08:30:00 GMT'),
-        deliveryTime: new Date('Fri, 29 Aug 2003 08:30:00 GMT'),
-        cookedTime: new Date('Fri, 29 Aug 2003 08:30:00 GMT'),
+        initialTime: new Date('2003-08-29T08:30:00.000Z'),
+        deliveryTime: new Date('2003-08-29T08:30:00.000Z'),
+        cookedTime: new Date('2003-08-29T08:30:00.000Z'),
         state: 'cooked',
         highPriority: true,
         currentBatch: null,
@@ -172,17 +184,17 @@ describe('Order parsing', () => {
   });
 
   it('survives an invalid date', () => {
-    testPair(
-      order,
+    testPair<Order>(
+      json.order,
       {
         id: 8129387,
         restaurant: 124192,
         destination: '1600 Pennsylvania Avenue NW, Washington, DC 20500',
-        itemNames: ['Tragedy', 'Comedy'],
+        itemNames: '["Tragedy","Comedy"]',
         initialTime: 'Hello!!!',
-        deliveryTime: 'Fri, 29 Aug 2003 08:30:00 GMT',
-        cookedTime: 'Fri, 29 Aug 2003 08:30:00 GMT',
-        state: 'cooked',
+        deliveryTime: '2003-08-29T08:30:00.000Z',
+        cookedTime: '2003-08-29T08:30:00.000Z',
+        state: 'COOKED',
         highPriority: true,
         currentBatch: null,
       },
@@ -200,8 +212,8 @@ describe('Order parsing', () => {
         },
         itemNames: ['Tragedy', 'Comedy'],
         initialTime: new Date(NaN),
-        deliveryTime: new Date('Fri, 29 Aug 2003 08:30:00 GMT'),
-        cookedTime: new Date('Fri, 29 Aug 2003 08:30:00 GMT'),
+        deliveryTime: new Date('2003-08-29T08:30:00.000Z'),
+        cookedTime: new Date('2003-08-29T08:30:00.000Z'),
         state: 'cooked',
         highPriority: true,
         currentBatch: null,
@@ -213,14 +225,14 @@ describe('Order parsing', () => {
 
 describe('Batch parsing', () => {
   it('parses a valid Batch', () => {
-    testPair(
-      batch,
+    testPair<Batch>(
+      json.batch,
       {
         id: 871634,
         driver: 512387,
         route: '_p~iF~ps|U_ulLnnqC_mqNvxq`@',
-        dispatchTime: 'Fri, 30 Jan 2026 01:30:00 GMT',
-        expectedCompletionTime: 'Fri, 30 Jan 2026 01:30:00 GMT',
+        dispatchTime: '2026-01-30T01:30:00.000Z',
+        expectedCompletionTime: '2026-01-30T01:30:00.000Z',
       },
       {
         id: {
@@ -234,21 +246,21 @@ describe('Batch parsing', () => {
         route: {
           encoded: '_p~iF~ps|U_ulLnnqC_mqNvxq`@',
         },
-        dispatchTime: new Date('Fri, 30 Jan 2026 01:30:00 GMT'),
-        expectedCompletionTime: new Date('Fri, 30 Jan 2026 01:30:00 GMT'),
+        dispatchTime: new Date('2026-01-30T01:30:00.000Z'),
+        expectedCompletionTime: new Date('2026-01-30T01:30:00.000Z'),
       },
     );
   });
 
   it('survives an invalid Polyline', () => {
-    testPair(
-      batch,
+    testPair<Batch>(
+      json.batch,
       {
         id: 871634,
         driver: 512387,
         route: 'Hello World! 1 2 3 4 5',
-        dispatchTime: 'Fri, 30 Jan 2026 01:30:00 GMT',
-        expectedCompletionTime: 'Fri, 30 Jan 2026 01:30:00 GMT',
+        dispatchTime: '2026-01-30T01:30:00.000Z',
+        expectedCompletionTime: '2026-01-30T01:30:00.000Z',
       },
       {
         id: {
@@ -262,8 +274,8 @@ describe('Batch parsing', () => {
         route: {
           encoded: 'Hello World! 1 2 3 4 5',
         },
-        dispatchTime: new Date('Fri, 30 Jan 2026 01:30:00 GMT'),
-        expectedCompletionTime: new Date('Fri, 30 Jan 2026 01:30:00 GMT'),
+        dispatchTime: new Date('2026-01-30T01:30:00.000Z'),
+        expectedCompletionTime: new Date('2026-01-30T01:30:00.000Z'),
       },
     );
   });
@@ -271,8 +283,8 @@ describe('Batch parsing', () => {
 
 describe('MenuItem parsing', () => {
   it('parses a valid MenuItem', () => {
-    testPair(
-      menuItem,
+    testPair<MenuItem>(
+      json.menuItem,
       {
         id: 5123,
         restaurant: 9123,

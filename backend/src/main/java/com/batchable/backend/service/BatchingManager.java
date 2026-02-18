@@ -75,8 +75,13 @@ public class BatchingManager {
    */
   private RestaurantBatchingManager getManager(long restaurantId) {
     if (!restaurantManagers.containsKey(restaurantId)) {
-      throw new IllegalArgumentException("Cannot get RestaurantBatchingManager for id "
-          + restaurantId + "because it does not exist.");
+      // throw new IllegalArgumentException("Cannot get RestaurantBatchingManager for id "
+      // + restaurantId + "because it does not exist.");
+      Restaurant restaurant = restaurantService.getRestaurant(restaurantId);
+      String address = restaurant.location;
+      restaurantManagers.put(restaurantId,
+          new RestaurantBatchingManager(restaurantId, address, publisher, batchingAlgorithm,
+              routeService, dbOrderService, driverService, restaurantService, null));
     }
     return restaurantManagers.get(restaurantId);
   }
@@ -172,7 +177,7 @@ public class BatchingManager {
     long restaurantId = order.restaurantId;
     getManager(restaurantId).removeOrder(orderId);
   }
-  
+
   /**
    * Updates an existing order and forwards the update to the batching manager for the order's
    * restaurant.

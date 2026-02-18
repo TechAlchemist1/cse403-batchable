@@ -6,6 +6,7 @@ import com.batchable.backend.db.models.Order;
 import com.batchable.backend.db.models.Restaurant;
 import com.batchable.backend.service.BatchingManager;
 import com.batchable.backend.service.RestaurantService;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -44,9 +45,10 @@ public class RestaurantController {
    */
   @PostMapping
   @ResponseStatus(HttpStatus.CREATED)
-  public void createRestaurant(@RequestBody Restaurant restaurant) {
-    restaurantService.createRestaurant(restaurant);
+  public long createRestaurant(@RequestBody Restaurant restaurant) {
+    long id = restaurantService.createRestaurant(restaurant);
     batchingManager.addManager(restaurant.id);
+    return id;
   }
 
   /**
@@ -95,12 +97,12 @@ public class RestaurantController {
   /**
    * Get all active orders for a restaurant.
    *
-   * GET /order/restaurant/{restaurantId}
+   * GET restaurant/{restaurantId}/orders
    *
    * @param restaurantId the restaurant ID
    * @return list of Orders
    */
-  @GetMapping("/restaurant/{restaurantId}")
+  @GetMapping("/{restaurantId}/orders")
   @ResponseStatus(HttpStatus.OK)
   public List<Order> getRestaurantOrders(@PathVariable long restaurantId) {
     return restaurantService.getRestaurantOrders(restaurantId);

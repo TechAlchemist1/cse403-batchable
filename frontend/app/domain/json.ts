@@ -7,9 +7,17 @@ import type {
   Restaurant,
   Driver,
   Batch,
+  PhoneNumber,
+  DomainObject,
 } from './objects';
 
-type JSONDomainField<T> = T extends Date | WorldLocation | Polyline
+type JSONDomainField<T> = T extends
+  | Date
+  | WorldLocation
+  | Polyline
+  | PhoneNumber
+  | unknown[]
+  | string
   ? string
   : T extends Id<infer I>
     ? Id<I>['id']
@@ -53,7 +61,7 @@ const parseDate: JSONFieldParserPair<Date> = {
     return new Date(utc);
   },
   unparse(date) {
-    return date.toUTCString();
+    return date.toISOString();
   },
 };
 
@@ -77,6 +85,40 @@ const parseNullable = <T>(
   },
 });
 
+const parseList = <T>(
+  parserPair: JSONFieldParserPair<T>,
+): JSONFieldParserPair<T[]> => ({
+  parse(json) {
+    try {
+      return JSON.parse(json).map(parserPair.parse);
+    } catch {
+      return [];
+    }
+  },
+  unparse(domain) {
+    return JSON.stringify(domain.map(parserPair.unparse));
+  },
+});
+
+const parsePhoneNumber: JSONFieldParserPair<PhoneNumber> = {
+  parse(compact) {
+    return {compact};
+  },
+  unparse(phone) {
+    return phone.compact;
+  },
+};
+
+// TODO: this shouldn't be the case
+const parseUppercase = <T extends string>(): JSONFieldParserPair<T> => ({
+  parse(upper: string) {
+    return upper.toLowerCase() as T;
+  },
+  unparse(lower: T) {
+    return lower.toUpperCase() as JSONDomainField<T>;
+  },
+});
+
 const identity = {
   parse<T>(x: T) {
     return x;
@@ -89,9 +131,10 @@ const identity = {
 /**
  * Represents a method of converting domain objects between a TypeScript domain object representation, and a post-parsing JSON representation. `parse` converts from JSON to TypeScript, and `unparse` vice-versa.
  */
-export interface JSONParserPair<T> {
-  parse(json: JSONDomainObject<T>): T;
-  unparse(domain: T): JSONDomainObject<T>;
+export interface JSONParserPair<T extends DomainObject> {
+  field: <K extends keyof T>(key: K) => JSONFieldParserPair<T[K]>;
+  parse: (json: JSONDomainObject<T>) => T;
+  unparse: (domain: T) => JSONDomainObject<T>;
 }
 
 /**
@@ -99,11 +142,14 @@ export interface JSONParserPair<T> {
  * @param spec A mapping from domain object keys to parser pairs which can parse their JSON-like values
  * @returns A parser pair from a post-parsing JSON representation of the given object to the full TypeScript representation of the domain object
  */
-function createDomainObjectParserPair<T>(spec: {
+function createDomainObjectParserPair<T extends DomainObject>(spec: {
   [K in keyof T]: JSONFieldParserPair<T[K]>;
 }): JSONParserPair<T> {
   return {
-    parse(json: JSONDomainObject<T>): T {
+    field(key) {
+      return spec[key];
+    },
+    parse(json) {
       const domainObject = {} as T; // safe since "result" isn't read until return
       for (const key in spec) {
         if (!Object.hasOwn(spec, key)) continue;
@@ -111,7 +157,7 @@ function createDomainObjectParserPair<T>(spec: {
       }
       return domainObject;
     },
-    unparse(domainObject: T): JSONDomainObject<T> {
+    unparse(domainObject) {
       const json = {} as JSONDomainObject<T>; // safe since "result" isn't read until return
       for (const key in spec) {
         if (!Object.hasOwn(spec, key)) continue;
@@ -130,7 +176,7 @@ export const restaurant = createDomainObjectParserPair<Restaurant>({
 
 export const driver = createDomainObjectParserPair<Driver>({
   id: parseId('Driver'),
-  phoneNumber: identity,
+  phoneNumber: parsePhoneNumber,
   restaurant: parseId('Restaurant'),
   name: identity,
   onShift: identity,
@@ -140,11 +186,11 @@ export const order = createDomainObjectParserPair<Order>({
   id: parseId('Order'),
   restaurant: parseId('Restaurant'),
   destination: parseWorldLocation,
-  itemNames: identity,
+  itemNames: parseList<string>(identity),
   initialTime: parseDate,
   deliveryTime: parseDate,
   cookedTime: parseDate,
-  state: identity,
+  state: parseUppercase<Order['state']>(),
   highPriority: identity,
   currentBatch: parseNullable(parseId('Batch')),
 });

@@ -3,6 +3,8 @@ package com.batchable.backend.controller;
 import com.batchable.backend.db.models.Batch;
 import com.batchable.backend.db.models.Order;
 import com.batchable.backend.service.OrderService;
+import com.batchable.backend.twilio.SmsService;
+
 import java.time.Instant;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -20,10 +22,13 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/order")
 public class OrderController {
 
+    private final SmsService smsService;
+
   private final OrderService orderService;
 
-  public OrderController(OrderService orderService) {
+  public OrderController(OrderService orderService, SmsService smsService) {
     this.orderService = orderService;
+    this.smsService = smsService;
   }
 
   /**
@@ -35,8 +40,10 @@ public class OrderController {
    */
   @PostMapping
   @ResponseStatus(HttpStatus.CREATED)
-  public void createOrder(@RequestBody Order order) {
-    orderService.createOrder(order);
+  public long createOrder(@RequestBody Order order) {
+    long id = orderService.createOrder(order);
+    smsService.sendSms("+18777804236", "Created order with id " + id);
+    return id;
   }
 
   /**

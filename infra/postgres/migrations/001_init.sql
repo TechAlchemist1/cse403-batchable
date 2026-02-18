@@ -105,3 +105,6 @@ CREATE TABLE Menu_Item (
   name VARCHAR(100) NOT NULL,
   FOREIGN KEY (restaurant_id) REFERENCES Restaurant(id)
 );
+
+INSERT INTO Restaurant (id, name, location)
+VALUES (1, 'applesneeze', 'Lynnwood, WA');

@@ -40,8 +40,8 @@ public class MenuController {
    */
   @PostMapping
   @ResponseStatus(HttpStatus.CREATED)
-  public void createMenuItem(@RequestBody MenuItem menuItem) {
-    menuService.createMenuItem(menuItem);
+  public long createMenuItem(@RequestBody MenuItem menuItem) {
+    return menuService.createMenuItem(menuItem);
   }
 
 

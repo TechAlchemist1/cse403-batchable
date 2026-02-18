@@ -43,8 +43,8 @@ public class DriverController {
    */
   @PostMapping
   @ResponseStatus(HttpStatus.CREATED) // 201 if successful
-  public void createDriver(@RequestBody Driver driver) {
-    driverService.createDriver(driver);
+  public long createDriver(@RequestBody Driver driver) {
+   return driverService.createDriver(driver);
   }
 
   /**
