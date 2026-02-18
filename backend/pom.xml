@@ -102,7 +102,13 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-websocket</artifactId>
-    </dependency>
+  </dependency>
+  <!-- For Twilio -->
+  <dependency>
+    <groupId>com.twilio.sdk</groupId>
+    <artifactId>twilio</artifactId>
+    <version>9.14.0</version>
+  </dependency>
 
     <!-- For LRU cache to reduce API calls -->
     <dependency>
