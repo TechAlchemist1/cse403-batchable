@@ -17,10 +17,18 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
+/**
+ * Unit tests for DriverService using Mockito.
+ *
+ * Verifies validation rules, exception handling, and correct delegation to DAOs for all public
+ * methods of DriverService.
+ */
 public class DriverServiceTest {
 
-  @Mock private DriverDAO driverDAO;
-  @Mock private BatchDAO batchDAO;
+  @Mock
+  private DriverDAO driverDAO;
+  @Mock
+  private BatchDAO batchDAO;
 
   private DriverService service;
 
@@ -32,9 +40,11 @@ public class DriverServiceTest {
 
   // ---------------- createDriver ----------------
 
+  /** Verifies that a driver is created with off‑shift forced and the correct ID returned. */
   @Test
   void createDriver_happyPath_returnsId_andForcesOffShift() throws Exception {
-    Driver d = new Driver(/*id=*/0, /*restaurantId=*/10, "Alice", "206-555-0101", /*onShift=*/true);
+    Driver d =
+        new Driver(/* id= */0, /* restaurantId= */10, "Alice", "206-555-0101", /* onShift= */true);
 
     when(driverDAO.createDriver(eq(10L), eq("Alice"), eq("206-555-0101"), eq(false)))
         .thenReturn(123L);
@@ -47,23 +57,28 @@ public class DriverServiceTest {
     verifyNoInteractions(batchDAO);
   }
 
+  /** Ensures that dummy (non‑positive) IDs are accepted. */
   @Test
   void createDriver_allowsDummyIdNegativeOrZero() throws Exception {
-    Driver d = new Driver(/*id=*/-1, /*restaurantId=*/10, "Alice", "206-555-0101", /*onShift=*/false);
+    Driver d = new Driver(/* id= */-1, /* restaurantId= */10, "Alice", "206-555-0101",
+        /* onShift= */false);
 
     when(driverDAO.createDriver(anyLong(), anyString(), anyString(), eq(false))).thenReturn(5L);
 
     assertEquals(5L, service.createDriver(d));
   }
 
+  /** Verifies that a driver with a pre‑assigned positive ID is rejected. */
   @Test
   void createDriver_rejectsPositiveId() {
-    Driver d = new Driver(/*id=*/7, /*restaurantId=*/10, "Alice", "206-555-0101", /*onShift=*/false);
+    Driver d =
+        new Driver(/* id= */7, /* restaurantId= */10, "Alice", "206-555-0101", /* onShift= */false);
 
     assertThrows(IllegalStateException.class, () -> service.createDriver(d));
     verifyNoInteractions(driverDAO, batchDAO);
   }
 
+  /** Tests all validation checks for createDriver: null, restaurantId, name, phone. */
   @Test
   void createDriver_validations() {
     assertThrows(IllegalArgumentException.class, () -> service.createDriver(null));
@@ -80,6 +95,7 @@ public class DriverServiceTest {
     verifyNoInteractions(driverDAO, batchDAO);
   }
 
+  /** Verifies that SQLException from DAO is wrapped in a RuntimeException. */
   @Test
   void createDriver_wrapsSqlException() throws Exception {
     Driver d = new Driver(0, 10, "Alice", "206-555-0101", false);
@@ -93,9 +109,11 @@ public class DriverServiceTest {
 
   // ---------------- updateDriver ----------------
 
+  /** Verifies that updateDriver retrieves the existing driver and updates name/phone. */
   @Test
   void updateDriver_happyPath_callsUpdate() throws Exception {
-    Driver d = new Driver(/*id=*/50, /*restaurantId=*/10, "Bob", "206-555-2222", /*onShift=*/false);
+    Driver d =
+        new Driver(/* id= */50, /* restaurantId= */10, "Bob", "206-555-2222", /* onShift= */false);
 
     when(driverDAO.getDriver(50L)).thenReturn(Optional.of(d));
     when(driverDAO.updateDriver(50L, "Bob", "206-555-2222")).thenReturn(true);
@@ -108,6 +126,7 @@ public class DriverServiceTest {
     verifyNoInteractions(batchDAO);
   }
 
+  /** Tests that updateDriver rejects null, non‑positive ID, blank name, or invalid phone. */
   @Test
   void updateDriver_rejectsNullOrNonPositiveId_orBadFields() {
     assertThrows(IllegalArgumentException.class, () -> service.updateDriver(null));
@@ -124,6 +143,7 @@ public class DriverServiceTest {
     verifyNoInteractions(driverDAO, batchDAO);
   }
 
+  /** Ensures updateDriver throws if the driver does not exist before update. */
   @Test
   void updateDriver_throwsIfDriverMissing_beforeUpdate() throws Exception {
     Driver d = new Driver(99, 10, "Bob", "206-555-2222", false);
@@ -135,6 +155,7 @@ public class DriverServiceTest {
     verifyNoInteractions(batchDAO);
   }
 
+  /** Ensures updateDriver throws if the DAO update returns false (indicating no rows affected). */
   @Test
   void updateDriver_throwsIfUpdateReturnsFalse() throws Exception {
     Driver d = new Driver(99, 10, "Bob", "206-555-2222", false);
@@ -146,6 +167,7 @@ public class DriverServiceTest {
 
   // ---------------- updateDriverOnShift ----------------
 
+  /** Verifies that setting shift to the current value does nothing. */
   @Test
   void updateDriverOnShift_noOpIfAlreadySameShift() throws Exception {
     Driver existing = new Driver(5, 10, "Bob", "206-555-2222", true);
@@ -158,6 +180,7 @@ public class DriverServiceTest {
     verifyNoInteractions(batchDAO);
   }
 
+  /** Verifies that turning a driver on shift calls setDriverShift without checking batches. */
   @Test
   void updateDriverOnShift_turnOnShift_callsSetShift() throws Exception {
     Driver existing = new Driver(5, 10, "Bob", "206-555-2222", false);
@@ -169,8 +192,13 @@ public class DriverServiceTest {
     verify(batchDAO, never()).batchExistsForDriver(anyLong());
   }
 
+  /**
+   * Ensures that turning a driver off shift is blocked if they have an active batch, and the batch
+   * ID is included in the exception message.
+   */
   @Test
-  void updateDriverOnShift_blockTurningOffIfBatchExists_includesBatchIdIfPresent() throws Exception {
+  void updateDriverOnShift_blockTurningOffIfBatchExists_includesBatchIdIfPresent()
+      throws Exception {
     Driver existing = new Driver(5, 10, "Bob", "206-555-2222", true);
     when(driverDAO.getDriver(5L)).thenReturn(Optional.of(existing));
     when(batchDAO.batchExistsForDriver(5L)).thenReturn(true);
@@ -184,6 +212,10 @@ public class DriverServiceTest {
     verify(driverDAO, never()).setDriverShift(anyLong(), anyBoolean());
   }
 
+  /**
+   * Verifies that if a batch exists but its ID cannot be retrieved, the exception says
+   * "batchId=unknown".
+   */
   @Test
   void updateDriverOnShift_blockTurningOffIfBatchExists_unknownBatchIdIfMissing() throws Exception {
     Driver existing = new Driver(5, 10, "Bob", "206-555-2222", true);
@@ -198,6 +230,7 @@ public class DriverServiceTest {
     verify(driverDAO, never()).setDriverShift(anyLong(), anyBoolean());
   }
 
+  /** Tests validation of driver ID and existence for updateDriverOnShift. */
   @Test
   void updateDriverOnShift_validatesId_andDriverExists() throws Exception {
     assertThrows(IllegalArgumentException.class, () -> service.updateDriverOnShift(0L, true));
@@ -208,6 +241,7 @@ public class DriverServiceTest {
 
   // ---------------- getDriver ----------------
 
+  /** Verifies that getDriver returns the driver when found. */
   @Test
   void getDriver_happyPath() throws Exception {
     Driver d = new Driver(1, 10, "Alice", "206-555-0101", false);
@@ -217,6 +251,7 @@ public class DriverServiceTest {
     assertEquals(1L, got.id);
   }
 
+  /** Verifies that getDriver throws when the driver is not found. */
   @Test
   void getDriver_missing_throws() throws Exception {
     when(driverDAO.getDriver(1L)).thenReturn(Optional.empty());
@@ -225,6 +260,7 @@ public class DriverServiceTest {
 
   // ---------------- removeDriver ----------------
 
+  /** Ensures removeDriver is blocked if the driver is on shift. */
   @Test
   void removeDriver_blocksIfOnShift() throws Exception {
     Driver d = new Driver(1, 10, "Alice", "206-555-0101", true);
@@ -237,6 +273,7 @@ public class DriverServiceTest {
     verifyNoInteractions(batchDAO);
   }
 
+  /** Ensures removeDriver is blocked if the driver has an active batch, even if off shift. */
   @Test
   void removeDriver_blocksIfBatchExists() throws Exception {
     Driver d = new Driver(1, 10, "Alice", "206-555-0101", false);
@@ -245,12 +282,14 @@ public class DriverServiceTest {
     when(batchDAO.getBatchForDriver(1L))
         .thenReturn(Optional.of(new Batch(9L, 1L, "poly", Instant.now(), Instant.now())));
 
-    IllegalStateException ex = assertThrows(IllegalStateException.class, () -> service.removeDriver(1L));
+    IllegalStateException ex =
+        assertThrows(IllegalStateException.class, () -> service.removeDriver(1L));
     assertTrue(ex.getMessage().contains("batchId=9"));
 
     verify(driverDAO, never()).deleteDriver(anyLong());
   }
 
+  /** Verifies successful deletion when off shift and no batch exists. */
   @Test
   void removeDriver_happyPath_deletes() throws Exception {
     Driver d = new Driver(1, 10, "Alice", "206-555-0101", false);
@@ -263,6 +302,7 @@ public class DriverServiceTest {
     verify(driverDAO).deleteDriver(1L);
   }
 
+  /** Verifies that if deleteDriver returns false, an IllegalArgumentException is thrown. */
   @Test
   void removeDriver_deleteReturnsFalse_throwsNotFound() throws Exception {
     Driver d = new Driver(1, 10, "Alice", "206-555-0101", false);
@@ -275,6 +315,9 @@ public class DriverServiceTest {
 
   // ---------------- getDriverBatch ----------------
 
+  /**
+   * Verifies that getDriverBatch first checks driver existence, then returns the batch from DAO.
+   */
   @Test
   void getDriverBatch_requiresDriverExists_thenReturnsDaoBatch() throws Exception {
     Driver d = new Driver(1, 10, "Alice", "206-555-0101", false);

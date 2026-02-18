@@ -11,12 +11,29 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.Arrays;
 import java.util.List;
 
+/**
+ * Integration test for RouteService.getDistanceMatrix.
+ *
+ * This test makes a real HTTP call to an external distance matrix API (e.g., Google Maps) to verify
+ * that the service can successfully fetch travel times between multiple origins and destinations,
+ * and that the returned matrix has the correct dimensions and non‑negative values.
+ *
+ * It uses @SpringBootTest to load the full application context, ensuring that all required beans
+ * (including API clients and configuration) are available.
+ */
 @SpringBootTest
 class RouteServiceDistanceMatrixIT {
 
   @Autowired
   private RouteService routeService;
 
+  /**
+   * Tests that a valid request for a distance matrix between two origins and three destinations
+   * returns a non‑null response with a matrix of the expected size and non‑negative travel times.
+   *
+   * This verifies that the external API is reachable, the API key is correctly configured, and that
+   * the response mapping works as expected.
+   */
   @Test
   void testGetDistanceMatrix() {
     // Origins and destinations for the matrix

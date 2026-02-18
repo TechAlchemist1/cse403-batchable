@@ -7,12 +7,9 @@ import java.util.function.Consumer;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import com.batchable.backend.db.models.Batch;
 import com.batchable.backend.db.models.Order;
-import com.batchable.backend.db.models.Order.State;
 import com.batchable.backend.db.models.Restaurant;
 import com.batchable.backend.service.internal.RestaurantBatchingManager;
-import com.batchable.backend.service.internal.RestaurantBatchingManager.Batches;
 import com.batchable.backend.websocket.OrderWebSocketPublisher;
 
 /**
@@ -94,7 +91,7 @@ public class BatchingManager {
   public void addManager(long restaurantId) {
     if (restaurantManagers.containsKey(restaurantId)) {
       throw new IllegalArgumentException("Cannot add RestaurantBatchingManager for id "
-          + restaurantId + "because it already exists.");
+          + restaurantId + " because it already exists.");
     }
     Restaurant restaurant = restaurantService.getRestaurant(restaurantId);
     String address = restaurant.location;
@@ -114,7 +111,7 @@ public class BatchingManager {
   public void updateManagerAddress(long restaurantId, String restaurantAddress) {
     if (!restaurantManagers.containsKey(restaurantId)) {
       throw new IllegalArgumentException("Cannot update RestaurantBatchingManager for id "
-          + restaurantId + "because it does not exist.");
+          + restaurantId + " because it does not exist.");
     }
     restaurantManagers.get(restaurantId).setRestaurantAddress(restaurantAddress);
 
@@ -129,7 +126,7 @@ public class BatchingManager {
   public void removeManager(long restaurantId) {
     if (!restaurantManagers.containsKey(restaurantId)) {
       throw new IllegalArgumentException("Cannot remove RestaurantBatchingManager for id "
-          + restaurantId + "because it does not exist.");
+          + restaurantId + " because it does not exist.");
     }
     restaurantManagers.remove(restaurantId);
   }

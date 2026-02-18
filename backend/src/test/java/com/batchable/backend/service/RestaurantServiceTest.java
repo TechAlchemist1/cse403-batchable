@@ -21,24 +21,27 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * RestaurantService mock-based unit tests (Mockito).
+ * Unit tests for RestaurantService using Mockito.
  *
- * Covers:
- *  - createRestaurant validations + uniqueness check
- *  - updateRestaurant validations + existence + name uniqueness excluding id
- *  - getRestaurant
- *  - removeRestaurant domain rules (no active orders, no on-shift drivers)
- *  - getRestaurantOrders/Drivers/MenuItems validate restaurant exists
- *  - SQLException wrapping behavior
+ * This test class verifies: - Input validation and uniqueness checks when creating a restaurant. -
+ * Update logic: existence, name uniqueness (excluding self), and field updates. - Retrieval of a
+ * restaurant by ID. - Deletion rules: cannot delete if there are active orders or on‑shift drivers.
+ * - Retrieval of related entities (orders, drivers, menu items) with validation. - Proper wrapping
+ * of SQLException into RuntimeException.
  */
 @ExtendWith(MockitoExtension.class)
 public class RestaurantServiceTest {
 
-  @Mock private RestaurantDAO restaurantDAO;
-  @Mock private OrderDAO orderDAO;
-  @Mock private DriverDAO driverDAO;
-  @Mock private MenuItemDAO menuItemDAO;
-  @Mock private BatchingManager mockBatchingManager;
+  @Mock
+  private RestaurantDAO restaurantDAO;
+  @Mock
+  private OrderDAO orderDAO;
+  @Mock
+  private DriverDAO driverDAO;
+  @Mock
+  private MenuItemDAO menuItemDAO;
+  @Mock
+  private BatchingManager mockBatchingManager;
 
   private RestaurantService service;
 
@@ -54,12 +57,14 @@ public class RestaurantServiceTest {
 
   // ---- createRestaurant ----
 
+  /** Verifies that passing null to createRestaurant throws IllegalArgumentException. */
   @Test
   void createRestaurant_null_throwsIAE() {
     assertThrows(IllegalArgumentException.class, () -> service.createRestaurant(null));
     verifyNoInteractions(restaurantDAO, orderDAO, driverDAO, menuItemDAO);
   }
 
+  /** Verifies that a restaurant with a blank name is rejected. */
   @Test
   void createRestaurant_blankName_throwsIAE() {
     Restaurant r = restaurant(0, "   ", "Seattle");
@@ -67,6 +72,7 @@ public class RestaurantServiceTest {
     verifyNoInteractions(restaurantDAO, orderDAO, driverDAO, menuItemDAO);
   }
 
+  /** Verifies that a restaurant with a blank location is rejected. */
   @Test
   void createRestaurant_blankLocation_throwsIAE() {
     Restaurant r = restaurant(0, "R1", "   ");
@@ -74,6 +80,10 @@ public class RestaurantServiceTest {
     verifyNoInteractions(restaurantDAO, orderDAO, driverDAO, menuItemDAO);
   }
 
+  /**
+   * Verifies that a restaurant with a pre‑assigned positive ID is rejected (must be
+   * database‑generated).
+   */
   @Test
   void createRestaurant_positiveId_throwsISE() {
     Restaurant r = restaurant(10, "R1", "Seattle");
@@ -81,6 +91,7 @@ public class RestaurantServiceTest {
     verifyNoInteractions(restaurantDAO, orderDAO, driverDAO, menuItemDAO);
   }
 
+  /** Ensures that a duplicate restaurant name causes an exception and no insert is attempted. */
   @Test
   void createRestaurant_duplicateName_throwsISE_andDoesNotCreate() throws Exception {
     Restaurant r = restaurant(0, "R1", "Seattle");
@@ -93,6 +104,7 @@ public class RestaurantServiceTest {
     verifyNoInteractions(orderDAO, driverDAO, menuItemDAO);
   }
 
+  /** Verifies that a valid restaurant is created and the generated ID is returned. */
   @Test
   void createRestaurant_happyPath_returnsId() throws Exception {
     Restaurant r = restaurant(0, "R1", "Seattle");
@@ -107,6 +119,7 @@ public class RestaurantServiceTest {
     verifyNoInteractions(orderDAO, driverDAO, menuItemDAO);
   }
 
+  /** Verifies that a SQLException from the DAO is wrapped in a RuntimeException. */
   @Test
   void createRestaurant_sqlException_wrapped() throws Exception {
     Restaurant r = restaurant(0, "R1", "Seattle");
@@ -121,30 +134,38 @@ public class RestaurantServiceTest {
 
   // ---- updateRestaurant ----
 
+  /** Verifies that updateRestaurant rejects a non‑positive ID. */
   @Test
   void updateRestaurant_nonPositiveId_throwsIAE() {
-    assertThrows(IllegalArgumentException.class, () -> service.updateRestaurant(0, restaurant(0, "R", "L")));
+    assertThrows(IllegalArgumentException.class,
+        () -> service.updateRestaurant(0, restaurant(0, "R", "L")));
     verifyNoInteractions(restaurantDAO, orderDAO, driverDAO, menuItemDAO);
   }
 
+  /** Verifies that updateRestaurant rejects a null restaurant object. */
   @Test
   void updateRestaurant_nullRestaurant_throwsIAE() {
     assertThrows(IllegalArgumentException.class, () -> service.updateRestaurant(1, null));
     verifyNoInteractions(restaurantDAO, orderDAO, driverDAO, menuItemDAO);
   }
 
+  /** Verifies that updateRestaurant rejects a blank name. */
   @Test
   void updateRestaurant_blankName_throwsIAE() {
-    assertThrows(IllegalArgumentException.class, () -> service.updateRestaurant(1, restaurant(0, " ", "Seattle")));
+    assertThrows(IllegalArgumentException.class,
+        () -> service.updateRestaurant(1, restaurant(0, " ", "Seattle")));
     verifyNoInteractions(restaurantDAO, orderDAO, driverDAO, menuItemDAO);
   }
 
+  /** Verifies that updateRestaurant rejects a blank location. */
   @Test
   void updateRestaurant_blankLocation_throwsIAE() {
-    assertThrows(IllegalArgumentException.class, () -> service.updateRestaurant(1, restaurant(0, "R1", " ")));
+    assertThrows(IllegalArgumentException.class,
+        () -> service.updateRestaurant(1, restaurant(0, "R1", " ")));
     verifyNoInteractions(restaurantDAO, orderDAO, driverDAO, menuItemDAO);
   }
 
+  /** Ensures that updateRestaurant throws if the restaurant does not exist. */
   @Test
   void updateRestaurant_missingRestaurant_throwsIAE_andDoesNotUpdate() throws Exception {
     when(restaurantDAO.restaurantExists(5L)).thenReturn(false);
@@ -156,6 +177,7 @@ public class RestaurantServiceTest {
     verify(restaurantDAO, never()).updateRestaurant(anyLong(), anyString(), anyString());
   }
 
+  /** Ensures that updating to a name already used by another restaurant is rejected. */
   @Test
   void updateRestaurant_nameConflict_throwsISE_andDoesNotUpdate() throws Exception {
     when(restaurantDAO.restaurantExists(5L)).thenReturn(true);
@@ -169,6 +191,7 @@ public class RestaurantServiceTest {
     verify(restaurantDAO, never()).updateRestaurant(anyLong(), anyString(), anyString());
   }
 
+  /** Verifies that if updateRestaurant returns false (no rows affected), an exception is thrown. */
   @Test
   void updateRestaurant_updateReturnsFalse_throwsIAE() throws Exception {
     when(restaurantDAO.restaurantExists(5L)).thenReturn(true);
@@ -179,6 +202,7 @@ public class RestaurantServiceTest {
         () -> service.updateRestaurant(5L, restaurant(0, "R2", "Seattle")));
   }
 
+  /** Verifies that a valid update succeeds and calls the DAO. */
   @Test
   void updateRestaurant_happyPath_callsDao() throws Exception {
     when(restaurantDAO.restaurantExists(5L)).thenReturn(true);
@@ -191,6 +215,7 @@ public class RestaurantServiceTest {
     verifyNoInteractions(orderDAO, driverDAO, menuItemDAO);
   }
 
+  /** Verifies that a SQLException from updateRestaurant is wrapped. */
   @Test
   void updateRestaurant_sqlException_wrapped() throws Exception {
     when(restaurantDAO.restaurantExists(5L)).thenReturn(true);
@@ -198,27 +223,29 @@ public class RestaurantServiceTest {
     when(restaurantDAO.updateRestaurant(anyLong(), anyString(), anyString()))
         .thenThrow(new SQLException("boom"));
 
-    RuntimeException ex =
-        assertThrows(RuntimeException.class,
-            () -> service.updateRestaurant(5L, restaurant(0, "R2", "Seattle")));
+    RuntimeException ex = assertThrows(RuntimeException.class,
+        () -> service.updateRestaurant(5L, restaurant(0, "R2", "Seattle")));
     assertTrue(ex.getMessage().contains("Failed to update restaurant"));
     assertTrue(ex.getCause() instanceof SQLException);
   }
 
   // ---- getRestaurant ----
 
+  /** Verifies that getRestaurant rejects a non‑positive ID. */
   @Test
   void getRestaurant_nonPositive_throwsIAE() {
     assertThrows(IllegalArgumentException.class, () -> service.getRestaurant(0));
     verifyNoInteractions(restaurantDAO, orderDAO, driverDAO, menuItemDAO);
   }
 
+  /** Verifies that getRestaurant throws when the restaurant does not exist. */
   @Test
   void getRestaurant_missing_throwsIAE() throws Exception {
     when(restaurantDAO.getRestaurant(5L)).thenReturn(Optional.empty());
     assertThrows(IllegalArgumentException.class, () -> service.getRestaurant(5L));
   }
 
+  /** Verifies that getRestaurant returns the expected restaurant when found. */
   @Test
   void getRestaurant_happyPath_returns() throws Exception {
     Restaurant r = restaurant(5, "R1", "Seattle");
@@ -228,6 +255,7 @@ public class RestaurantServiceTest {
     assertSame(r, got);
   }
 
+  /** Verifies that a SQLException from getRestaurant is wrapped. */
   @Test
   void getRestaurant_sqlException_wrapped() throws Exception {
     when(restaurantDAO.getRestaurant(5L)).thenThrow(new SQLException("boom"));
@@ -239,12 +267,14 @@ public class RestaurantServiceTest {
 
   // ---- removeRestaurant ----
 
+  /** Verifies that removeRestaurant rejects a non‑positive ID. */
   @Test
   void removeRestaurant_nonPositive_throwsIAE() {
     assertThrows(IllegalArgumentException.class, () -> service.removeRestaurant(0));
     verifyNoInteractions(restaurantDAO, orderDAO, driverDAO, menuItemDAO);
   }
 
+  /** Verifies that removeRestaurant throws when the restaurant does not exist. */
   @Test
   void removeRestaurant_missing_throwsIAE() throws Exception {
     when(restaurantDAO.restaurantExists(5L)).thenReturn(false);
@@ -256,6 +286,7 @@ public class RestaurantServiceTest {
     verifyNoInteractions(orderDAO, driverDAO, menuItemDAO);
   }
 
+  /** Ensures that deletion is blocked if there are active orders. */
   @Test
   void removeRestaurant_activeOrders_throwsISE_andDoesNotDelete() throws Exception {
     when(restaurantDAO.restaurantExists(5L)).thenReturn(true);
@@ -269,6 +300,7 @@ public class RestaurantServiceTest {
     verify(restaurantDAO, never()).deleteRestaurant(anyLong());
   }
 
+  /** Ensures that deletion is blocked if there are on‑shift drivers (even if no active orders). */
   @Test
   void removeRestaurant_hasOnShiftDrivers_throwsISE_andDoesNotDelete() throws Exception {
     when(restaurantDAO.restaurantExists(5L)).thenReturn(true);
@@ -283,6 +315,7 @@ public class RestaurantServiceTest {
     verify(restaurantDAO, never()).deleteRestaurant(anyLong());
   }
 
+  /** Verifies that if deleteRestaurant returns false, an exception is thrown. */
   @Test
   void removeRestaurant_deleteReturnsFalse_throwsIAE() throws Exception {
     when(restaurantDAO.restaurantExists(5L)).thenReturn(true);
@@ -293,6 +326,7 @@ public class RestaurantServiceTest {
     assertThrows(IllegalArgumentException.class, () -> service.removeRestaurant(5L));
   }
 
+  /** Verifies that a restaurant can be deleted when conditions are met. */
   @Test
   void removeRestaurant_happyPath_deletes() throws Exception {
     when(restaurantDAO.restaurantExists(5L)).thenReturn(true);
@@ -305,6 +339,7 @@ public class RestaurantServiceTest {
     verify(restaurantDAO).deleteRestaurant(5L);
   }
 
+  /** Verifies that a SQLException from deleteRestaurant is wrapped. */
   @Test
   void removeRestaurant_sqlException_wrapped() throws Exception {
     when(restaurantDAO.restaurantExists(5L)).thenReturn(true);
@@ -317,8 +352,10 @@ public class RestaurantServiceTest {
     assertTrue(ex.getCause() instanceof SQLException);
   }
 
-  // ---- getRestaurantOrders / Drivers / MenuItems (validate restaurant exists via getRestaurant) ----
+  // ---- getRestaurantOrders / Drivers / MenuItems (validate restaurant exists via getRestaurant)
+  // ----
 
+  /** Verifies that getRestaurantOrders validates the restaurant and returns open orders. */
   @Test
   void getRestaurantOrders_validatesRestaurant_thenListsOpenOrders() throws Exception {
     Restaurant r = restaurant(5, "R1", "Seattle");
@@ -335,6 +372,7 @@ public class RestaurantServiceTest {
     verify(orderDAO).listOpenOrdersForRestaurant(5L);
   }
 
+  /** Verifies that getRestaurantDrivers validates the restaurant and returns all drivers. */
   @Test
   void getRestaurantDrivers_validatesRestaurant_thenListsDrivers() throws Exception {
     Restaurant r = restaurant(5, "R1", "Seattle");
@@ -350,6 +388,7 @@ public class RestaurantServiceTest {
     verify(driverDAO).listDriversForRestaurant(5L, false);
   }
 
+  /** Verifies that getRestaurantMenuItems validates the restaurant and returns menu items. */
   @Test
   void getRestaurantMenuItems_validatesRestaurant_thenListsMenuItems() throws Exception {
     Restaurant r = restaurant(5, "R1", "Seattle");
@@ -366,6 +405,7 @@ public class RestaurantServiceTest {
     verify(menuItemDAO).listMenuItems(5L);
   }
 
+  /** Ensures that getRestaurantOrders throws if the restaurant does not exist. */
   @Test
   void getRestaurantOrders_missingRestaurant_throwsIAE_andDoesNotList() throws Exception {
     when(restaurantDAO.getRestaurant(5L)).thenReturn(Optional.empty());
@@ -375,6 +415,7 @@ public class RestaurantServiceTest {
     verify(orderDAO, never()).listOpenOrdersForRestaurant(anyLong());
   }
 
+  /** Ensures that getRestaurantDrivers throws if the restaurant does not exist. */
   @Test
   void getRestaurantDrivers_missingRestaurant_throwsIAE_andDoesNotList() throws Exception {
     when(restaurantDAO.getRestaurant(5L)).thenReturn(Optional.empty());
@@ -384,6 +425,7 @@ public class RestaurantServiceTest {
     verify(driverDAO, never()).listDriversForRestaurant(anyLong(), anyBoolean());
   }
 
+  /** Ensures that getRestaurantMenuItems throws if the restaurant does not exist. */
   @Test
   void getRestaurantMenuItems_missingRestaurant_throwsIAE_andDoesNotList() throws Exception {
     when(restaurantDAO.getRestaurant(5L)).thenReturn(Optional.empty());
@@ -393,35 +435,41 @@ public class RestaurantServiceTest {
     verify(menuItemDAO, never()).listMenuItems(anyLong());
   }
 
+  /** Verifies that a SQLException from listOpenOrdersForRestaurant is wrapped. */
   @Test
   void getRestaurantOrders_sqlException_wrapped() throws Exception {
     Restaurant r = restaurant(5, "R1", "Seattle");
     when(restaurantDAO.getRestaurant(5L)).thenReturn(Optional.of(r));
     when(orderDAO.listOpenOrdersForRestaurant(5L)).thenThrow(new SQLException("boom"));
 
-    RuntimeException ex = assertThrows(RuntimeException.class, () -> service.getRestaurantOrders(5L));
+    RuntimeException ex =
+        assertThrows(RuntimeException.class, () -> service.getRestaurantOrders(5L));
     assertTrue(ex.getMessage().contains("Failed to list restaurant orders"));
     assertTrue(ex.getCause() instanceof SQLException);
   }
 
+  /** Verifies that a SQLException from listDriversForRestaurant is wrapped. */
   @Test
   void getRestaurantDrivers_sqlException_wrapped() throws Exception {
     Restaurant r = restaurant(5, "R1", "Seattle");
     when(restaurantDAO.getRestaurant(5L)).thenReturn(Optional.of(r));
     when(driverDAO.listDriversForRestaurant(5L, false)).thenThrow(new SQLException("boom"));
 
-    RuntimeException ex = assertThrows(RuntimeException.class, () -> service.getRestaurantDrivers(5L));
+    RuntimeException ex =
+        assertThrows(RuntimeException.class, () -> service.getRestaurantDrivers(5L));
     assertTrue(ex.getMessage().contains("Failed to list restaurant drivers"));
     assertTrue(ex.getCause() instanceof SQLException);
   }
 
+  /** Verifies that a SQLException from listMenuItems is wrapped. */
   @Test
   void getRestaurantMenuItems_sqlException_wrapped() throws Exception {
     Restaurant r = restaurant(5, "R1", "Seattle");
     when(restaurantDAO.getRestaurant(5L)).thenReturn(Optional.of(r));
     when(menuItemDAO.listMenuItems(5L)).thenThrow(new SQLException("boom"));
 
-    RuntimeException ex = assertThrows(RuntimeException.class, () -> service.getRestaurantMenuItems(5L));
+    RuntimeException ex =
+        assertThrows(RuntimeException.class, () -> service.getRestaurantMenuItems(5L));
     assertTrue(ex.getMessage().contains("Failed to list restaurant menu items"));
     assertTrue(ex.getCause() instanceof SQLException);
   }

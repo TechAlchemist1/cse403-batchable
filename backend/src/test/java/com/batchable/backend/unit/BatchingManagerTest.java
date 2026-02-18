@@ -1,7 +1,6 @@
 package com.batchable.backend.unit;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import java.lang.reflect.Field;
@@ -17,7 +16,6 @@ import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.batchable.backend.db.models.Batch;
 import com.batchable.backend.db.models.Order;
 import com.batchable.backend.db.models.Order.State;
 import com.batchable.backend.db.models.Restaurant;
@@ -25,12 +23,21 @@ import com.batchable.backend.service.BatchingAlgorithm;
 import com.batchable.backend.service.BatchingManager;
 import com.batchable.backend.service.DbOrderService;
 import com.batchable.backend.service.DriverService;
-import com.batchable.backend.service.OrderService;
 import com.batchable.backend.service.RestaurantService;
 import com.batchable.backend.service.RouteService;
 import com.batchable.backend.service.internal.RestaurantBatchingManager;
 import com.batchable.backend.websocket.OrderWebSocketPublisher;
 
+/**
+ * Unit tests for BatchingManager using Mockito.
+ *
+ * This test class verifies: - Manager creation (addManager) and duplication checks. - Address
+ * updates delegate to the correct internal manager. - Manager removal. - Delegation of order
+ * operations (add, remove, update) to the appropriate RestaurantBatchingManager instance. -
+ * Listener registration (onBatchesChange, onBatchBecomeActive). - Scheduled batch expiration check
+ * delegates to all managers. - Error handling for invalid orders or restaurant service failures. -
+ * Reuse of the same manager instance for multiple operations on the same restaurant.
+ */
 @ExtendWith(MockitoExtension.class)
 class BatchingManagerTest {
 
@@ -68,13 +75,17 @@ class BatchingManagerTest {
         routeService, dbOrderService, driverService);
   }
 
-  // Helper to create a real Order
+  /** Creates a simple Order with the given ID and restaurant ID, other fields default. */
   private Order createOrder(long id, long restaurantId) {
     return new Order(id, restaurantId, "dest" + id, "[]", NOW, NOW.plusSeconds(3600),
         NOW.minusSeconds(300), State.COOKED, false, null);
   }
 
-  // Helper to extract the internal managers map via reflection
+  /**
+   * Uses reflection to access the private restaurantManagers map.
+   * 
+   * @return the internal map of restaurant ID to RestaurantBatchingManager
+   */
   @SuppressWarnings("unchecked")
   private Map<Long, RestaurantBatchingManager> getManagerMap() throws Exception {
     Field field = BatchingManager.class.getDeclaredField("restaurantManagers");
@@ -82,7 +93,13 @@ class BatchingManagerTest {
     return (Map<Long, RestaurantBatchingManager>) field.get(batchingManager);
   }
 
-  // Helper to replace a manager with a spy
+  /**
+   * Replaces the real manager for a restaurant with a spy, allowing verification of method calls on
+   * that manager.
+   * 
+   * @param restaurantId the ID of the restaurant whose manager should be spied
+   * @return the spy
+   */
   private RestaurantBatchingManager spyOnManager(long restaurantId) throws Exception {
     Map<Long, RestaurantBatchingManager> map = getManagerMap();
     RestaurantBatchingManager real = map.get(restaurantId);
@@ -94,6 +111,7 @@ class BatchingManagerTest {
 
   // --- addManager tests ---
 
+  /** Verifies that addManager creates a new manager and stores it in the map. */
   @Test
   void addManager_createsManagerAndStoresIt() throws Exception {
     // Given
@@ -110,6 +128,7 @@ class BatchingManagerTest {
     assertNotNull(map.get(RESTAURANT_ID_1));
   }
 
+  /** Verifies that adding a manager for a restaurant that already has one throws an exception. */
   @Test
   void addManager_duplicate_throwsException() {
     // Given
@@ -123,6 +142,7 @@ class BatchingManagerTest {
 
   // --- updateManagerAddress tests ---
 
+  /** Verifies that updating the address delegates to the correct manager. */
   @Test
   void updateManagerAddress_delegatesToManager() throws Exception {
     // Given
@@ -138,6 +158,7 @@ class BatchingManagerTest {
     verify(spy).setRestaurantAddress("New Address");
   }
 
+  /** Verifies that updateManagerAddress throws when the restaurant does not have a manager. */
   @Test
   void updateManagerAddress_nonexistent_throwsException() {
     assertThrows(IllegalArgumentException.class,
@@ -146,6 +167,7 @@ class BatchingManagerTest {
 
   // --- removeManager tests ---
 
+  /** Verifies that removeManager removes the manager from the internal map. */
   @Test
   void removeManager_removesFromMap() throws Exception {
     // Given
@@ -161,6 +183,7 @@ class BatchingManagerTest {
     assertFalse(getManagerMap().containsKey(RESTAURANT_ID_1));
   }
 
+  /** Verifies that removeManager throws when the restaurant does not have a manager. */
   @Test
   void removeManager_nonexistent_throwsException() {
     assertThrows(IllegalArgumentException.class,
@@ -169,6 +192,7 @@ class BatchingManagerTest {
 
   // --- Delegation tests ---
 
+  /** Verifies that addOrder delegates to the correct manager. */
   @Test
   void addOrder_delegatesToCorrectManager() throws Exception {
     // Given
@@ -185,6 +209,7 @@ class BatchingManagerTest {
     verify(spy).addOrder(order);
   }
 
+  /** Verifies that removeOrder delegates to the correct manager. */
   @Test
   void removeOrder_delegatesToCorrectManager() throws Exception {
     // Given
@@ -202,6 +227,7 @@ class BatchingManagerTest {
     verify(spy).removeOrder(100L);
   }
 
+  /** Verifies that updateOrder delegates to the correct manager with the correct flag. */
   @Test
   void updateOrder_delegatesToCorrectManager() throws Exception {
     // Given
@@ -221,6 +247,7 @@ class BatchingManagerTest {
 
   // --- Listener registration tests ---
 
+  /** Verifies that onBatchesChange registers a listener with the correct manager. */
   @Test
   void onBatchesChange_addsListenerToManager() throws Exception {
     // Given
@@ -237,6 +264,7 @@ class BatchingManagerTest {
     verify(spy).onBatchChange(listener);
   }
 
+  /** Verifies that onBatchBecomeActive registers a listener with the correct manager. */
   @Test
   void onBatchBecomeActive_addsListenerToManager() throws Exception {
     // Given
@@ -255,6 +283,7 @@ class BatchingManagerTest {
 
   // --- Scheduled check tests ---
 
+  /** Verifies that checkExpiredBatches calls the method on all existing managers. */
   @Test
   void checkExpiredBatches_callsAllManagers() throws Exception {
     // Given
@@ -276,6 +305,7 @@ class BatchingManagerTest {
     verify(spy2).checkExpiredBatches(BatchingManager.UPDATE_INCREMENTS_MILLIS);
   }
 
+  /** Verifies that checkExpiredBatches does nothing when no managers exist. */
   @Test
   void checkExpiredBatches_withNoManagers_doesNothing() {
     // When – no managers have been added
@@ -287,6 +317,7 @@ class BatchingManagerTest {
 
   // --- Error handling tests ---
 
+  /** Verifies that removeOrder throws when the order does not exist. */
   @Test
   void removeOrder_withInvalidOrderId_throwsException() {
     // Given
@@ -296,6 +327,7 @@ class BatchingManagerTest {
     assertThrows(IllegalArgumentException.class, () -> batchingManager.removeOrder(999L));
   }
 
+  /** Verifies that updateOrder throws when the order does not exist. */
   @Test
   void updateOrder_withInvalidOrderId_throwsException() {
     // Given
@@ -305,6 +337,7 @@ class BatchingManagerTest {
     assertThrows(IllegalArgumentException.class, () -> batchingManager.updateOrder(999L, true));
   }
 
+  /** Verifies that addManager propagates exceptions from restaurantService. */
   @Test
   void addManager_whenRestaurantServiceFails_throwsException() {
     // Given
@@ -315,6 +348,7 @@ class BatchingManagerTest {
     assertThrows(RuntimeException.class, () -> batchingManager.addManager(RESTAURANT_ID_1));
   }
 
+  /** Verifies that any operation on a restaurant without a manager throws an exception. */
   @Test
   void operationOnNonexistentRestaurant_throwsException() {
     // No manager added for RESTAURANT_ID_1
@@ -324,6 +358,10 @@ class BatchingManagerTest {
 
   // --- Reuse of existing manager ---
 
+  /**
+   * Verifies that multiple operations on the same restaurant use the same manager instance (i.e.,
+   * no duplicate creation).
+   */
   @Test
   void multipleOperationsOnSameRestaurant_useSameManager() throws Exception {
     // Given
@@ -333,9 +371,9 @@ class BatchingManagerTest {
     Map<Long, RestaurantBatchingManager> mapBefore = getManagerMap();
     RestaurantBatchingManager firstManager = mapBefore.get(RESTAURANT_ID_1);
 
-    // Create order
+    // Create order and stub getOrder
     Order order = createOrder(100L, RESTAURANT_ID_1);
-    when(dbOrderService.getOrder(100L)).thenReturn(order); // <-- add this stub
+    when(dbOrderService.getOrder(100L)).thenReturn(order);
 
     // When – additional operations
     batchingManager.addOrder(order);

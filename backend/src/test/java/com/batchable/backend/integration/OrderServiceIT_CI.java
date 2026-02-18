@@ -11,7 +11,6 @@ import com.batchable.backend.db.dao.RestaurantDAO;
 import com.batchable.backend.db.models.Order;
 import com.batchable.backend.service.BatchingManager;
 import com.batchable.backend.service.DbOrderService;
-import com.batchable.backend.service.OrderService;
 import com.batchable.backend.websocket.OrderWebSocketPublisher;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -26,13 +25,19 @@ import org.mockito.MockitoAnnotations;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 /**
- * Integration tests for OrderService: - real Postgres via Testcontainers (PostgresTestBase) - real
- * DAOs - real OrderWebSocketPublisher, but with mocked SimpMessagingTemplate so we can verify
- * publishes
+ * Integration tests for OrderService using real Postgres (Testcontainers) and real DAOs. This test
+ * verifies that OrderService correctly: - Persists orders and updates via the database. - Enforces
+ * domain rules (lifecycle transitions, invariants). - Publishes WebSocket messages via
+ * OrderWebSocketPublisher (with mocked SimpMessagingTemplate). - Delegates to BatchingManager
+ * (mocked) where appropriate. The database is cleaned before each test, and all dependencies except
+ * the messaging template are real.
  */
 public class OrderServiceIT_CI extends PostgresTestBase {
+
   @Mock
-  private BatchingManager mockBatchingManager;
+  private BatchingManager mockBatchingManager; // not directly used in these tests (DbOrderService
+                                               // doesn't use it)
+
   private Connection c;
 
   private RestaurantDAO restaurantDAO;
@@ -40,14 +45,14 @@ public class OrderServiceIT_CI extends PostgresTestBase {
   private BatchDAO batchDAO;
 
   private SimpMessagingTemplate messagingTemplate; // mock
-  private OrderWebSocketPublisher publisher; // real
-  private DbOrderService service; // real
+  private OrderWebSocketPublisher publisher; // real, but with mocked template
+  private DbOrderService service; // the service under test
 
   private TestDataSource ds;
 
   @BeforeEach
   void setUp() throws Exception {
-    // PostgresTestBase provides this per-test
+    // Initialize mocks and obtain the test database connection.
     MockitoAnnotations.openMocks(this);
     c = conn;
     assertNotNull(c, "PostgresTestBase.conn is null — did @BeforeAll run?");
@@ -63,17 +68,13 @@ public class OrderServiceIT_CI extends PostgresTestBase {
     publisher = new OrderWebSocketPublisher(messagingTemplate);
     service = new DbOrderService(orderDAO, batchDAO, publisher);
 
-    // Optional: keep each test isolated if you want.
-    // If you already clean tables elsewhere, remove this.
+    // Clean all tables before each test to ensure isolation.
     cleanupTables();
   }
 
+  /** Truncates all relevant tables to start each test with a clean database. */
   private void cleanupTables() throws SQLException {
-    // Order depends on Batch and Restaurant. Batch depends on Driver.
-    // If your schema uses quoted names like "Order", you must quote them here too.
-    // Use TRUNCATE ... CASCADE if your schema supports it.
     try (var st = c.createStatement()) {
-      // Match your DAO SQL which uses: Driver, Batch, Restaurant, and "Order"
       st.execute("TRUNCATE TABLE \"Order\" RESTART IDENTITY CASCADE;");
       st.execute("TRUNCATE TABLE Batch RESTART IDENTITY CASCADE;");
       st.execute("TRUNCATE TABLE Driver RESTART IDENTITY CASCADE;");
@@ -83,18 +84,19 @@ public class OrderServiceIT_CI extends PostgresTestBase {
 
   // ---------- helper inserts (avoid relying on other services) ----------
 
+  /** Creates a restaurant row and returns its ID. */
   private long createRestaurant(String name) throws SQLException {
-    // Your DAO uses Restaurant in SQL
     return restaurantDAO.createRestaurant(name, "Seattle");
   }
 
+  /** Creates an order row directly with the given state and returns its ID. */
   private long createOrderRow(long restaurantId, Order.State state) throws SQLException {
     return orderDAO.createOrder(restaurantId, "123 Pike St", "[\"Burger\"]", Instant.now(), null,
         null, state, false, null);
   }
 
+  /** Creates a driver row (off shift) and returns its ID. */
   private long createDriverRow(long restaurantId) throws SQLException {
-    // Match your DriverDAO SQL: INSERT INTO Driver(...)
     final String sql = "INSERT INTO Driver(restaurant_id, name, phone_number, on_shift) "
         + "VALUES (?, ?, ?, ?) RETURNING id;";
     try (PreparedStatement ps = c.prepareStatement(sql)) {
@@ -109,21 +111,18 @@ public class OrderServiceIT_CI extends PostgresTestBase {
     }
   }
 
+  /** Creates a batch row for the given driver and returns its ID. */
   private long createBatchRow(long driverId) throws SQLException {
-    // Match your BatchDAO SQL: INSERT INTO Batch(...)
     final String sql =
         "INSERT INTO Batch(driver_id, route, dispatch_time, expected_completion_time) "
             + "VALUES (?, ?, ?, ?) RETURNING id;";
     try (PreparedStatement ps = c.prepareStatement(sql)) {
       ps.setLong(1, driverId);
       ps.setString(2, "");
-
       Instant dispatch = Instant.now();
       Instant expected = dispatch.plusSeconds(600);
-
       ps.setTimestamp(3, Timestamp.from(dispatch));
       ps.setTimestamp(4, Timestamp.from(expected));
-
       try (ResultSet rs = ps.executeQuery()) {
         rs.next();
         return rs.getLong("id");
@@ -133,6 +132,9 @@ public class OrderServiceIT_CI extends PostgresTestBase {
 
   // ---------- tests ----------
 
+  /**
+   * Verifies that a valid order is persisted correctly and a WebSocket message is published.
+   */
   @Test
   void createOrder_happyPath_persists_andPublishes() throws Exception {
     long rid = createRestaurant("R1");
@@ -152,6 +154,10 @@ public class OrderServiceIT_CI extends PostgresTestBase {
     verify(messagingTemplate, times(1)).convertAndSend("/topic/orders/" + rid, "");
   }
 
+  /**
+   * Tests the full order lifecycle (COOKING → COOKED → DRIVING → DELIVERED). Verifies that the
+   * state advances correctly and a WebSocket message is published at each step.
+   */
   @Test
   void advanceOrderState_movesAlongLifecycle_andPublishesEachTime() throws Exception {
     long rid = createRestaurant("R1");
@@ -171,6 +177,9 @@ public class OrderServiceIT_CI extends PostgresTestBase {
     verify(messagingTemplate, times(3)).convertAndSend("/topic/orders/" + rid, "");
   }
 
+  /**
+   * Verifies that updating the cooked time works and triggers a WebSocket notification.
+   */
   @Test
   void updateOrderCookedTime_setsCookedTime_andPublishes() throws Exception {
     long rid = createRestaurant("R1");
@@ -183,6 +192,10 @@ public class OrderServiceIT_CI extends PostgresTestBase {
     verify(messagingTemplate, times(1)).convertAndSend("/topic/orders/" + rid, "");
   }
 
+  /**
+   * Verifies that an order can be remade (reset to COOKING, high priority) and that a WebSocket
+   * message is published.
+   */
   @Test
   void remakeOrder_resetsState_andPublishes() throws Exception {
     long rid = createRestaurant("R1");
@@ -200,6 +213,9 @@ public class OrderServiceIT_CI extends PostgresTestBase {
     verify(messagingTemplate, times(1)).convertAndSend("/topic/orders/" + rid, "");
   }
 
+  /**
+   * Verifies that an order can be removed (deleted) and that a WebSocket message is published.
+   */
   @Test
   void removeOrder_deletes_andPublishes() throws Exception {
     long rid = createRestaurant("R1");
@@ -211,6 +227,9 @@ public class OrderServiceIT_CI extends PostgresTestBase {
     verify(messagingTemplate, times(1)).convertAndSend("/topic/orders/" + rid, "");
   }
 
+  /**
+   * Verifies that an order can be assigned to a batch and that a WebSocket message is published.
+   */
   @Test
   void setOrderBatchId_assignsBatch_andPublishes() throws Exception {
     long rid = createRestaurant("R1");

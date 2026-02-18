@@ -43,7 +43,7 @@ public class DbOrderService {
    * Responsibilities:
    *  - Validate required fields (restaurant, items, timestamps, etc.)
    *  - Ensure order does not already exist
-   *  - Initialize default state (e.g., CREATED)
+   *  - Initialize default state COOKING
    *  - Persist to database
    *
    * Errors:
@@ -253,7 +253,7 @@ public class DbOrderService {
    * Resets the specified order to behave as if it were newly created.
    *
    * Behavior:
-   *  - Reset lifecycle state to initial (e.g., CREATED)
+   *  - Reset lifecycle state to initial COOKING
    *  - Clear delivery/batch assignment
    *  - Mark highPriority = true
    *  - Preserve identity and restaurant association

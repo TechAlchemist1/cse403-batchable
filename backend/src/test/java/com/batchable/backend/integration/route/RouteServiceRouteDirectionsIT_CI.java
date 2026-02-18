@@ -13,6 +13,16 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.Arrays;
 import java.util.List;
 
+/**
+ * Integration test for RouteService.getRouteDirections.
+ *
+ * This test makes real HTTP calls to an external directions API (e.g., Google Maps) to verify that
+ * the service can compute a route from a restaurant address through multiple stops. It tests both
+ * the case where detailed leg information is requested and where it is omitted.
+ *
+ * Uses @SpringBootTest to load the full application context, including API clients and
+ * configuration.
+ */
 @SpringBootTest
 class RouteServiceRouteDirectionsIT_CI {
 
@@ -22,6 +32,9 @@ class RouteServiceRouteDirectionsIT_CI {
   @Autowired
   private ObjectMapper objectMapper;
 
+  /**
+   * Runs the route test twice: once with leg details disabled, once with them enabled.
+   */
   @Test
   void testGetRouteDirections() {
     String restaurantAddress = "Seattle, WA";
@@ -33,19 +46,26 @@ class RouteServiceRouteDirectionsIT_CI {
     }
   }
 
+  /**
+   * Helper that performs the actual route request and validates the response.
+   *
+   * @param restaurantAddress the starting point
+   * @param stops the list of stops (delivery addresses)
+   * @param includeLegs whether the API should return detailed leg information
+   */
   private void testRouteForIncludeLegs(String restaurantAddress, List<String> stops,
       boolean includeLegs) {
     RouteDirectionsResponse response =
         routeService.getRouteDirections(restaurantAddress, stops, includeLegs);
     assertNotNull(response, "Response should not be null (includeLegs=" + includeLegs + ")");
-    
+
     // useful for debugging
     // try {
-    //   // Pretty-print JSON
-    //   String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(response);
-    //   System.out.println("Include legs = " + includeLegs + ":\n" + json);
+    // // Pretty-print JSON
+    // String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(response);
+    // System.out.println("Include legs = " + includeLegs + ":\n" + json);
     // } catch (Exception e) {
-    //   e.printStackTrace();
+    // e.printStackTrace();
     // }
 
     // Common assertions
@@ -56,8 +76,7 @@ class RouteServiceRouteDirectionsIT_CI {
     assertNotNull(polyline, "Polyline should not be null (includeLegs=" + includeLegs + ")");
     assertFalse(polyline.isEmpty(),
         "Polyline should not be empty (includeLegs=" + includeLegs + ")");
-    assertTrue(distanceMeters > 0,
-        "Distance should be positive (includeLegs=" + includeLegs + ")");
+    assertTrue(distanceMeters > 0, "Distance should be positive (includeLegs=" + includeLegs + ")");
     assertTrue(durationSeconds > 0,
         "Duration should be positive (includeLegs=" + includeLegs + ")");
 

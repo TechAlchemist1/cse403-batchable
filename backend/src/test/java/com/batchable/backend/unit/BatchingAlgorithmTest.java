@@ -9,7 +9,6 @@ import com.batchable.backend.db.models.Order.State;
 import com.batchable.backend.service.BatchingAlgorithm;
 import com.batchable.backend.service.BatchingAlgorithm.TentativeBatch;
 import com.batchable.backend.service.DbOrderService;
-import com.batchable.backend.service.OrderService;
 import com.batchable.backend.service.RouteService;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +24,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * Unit tests for BatchingAlgorithm using mocked RouteService and DbOrderService.
+ *
+ * This test class verifies that the batching algorithm correctly groups orders into tentative
+ * batches based on their cooked times, delivery times, and travel times between destinations. It
+ * tests various scenarios including uniform and non‑uniform travel times, edge cases, and
+ * invariants of the batch structure.
+ */
 class BatchingAlgorithmTest {
   private RouteService mockRouteService;
   private DbOrderService mockDbOrderService;
@@ -45,16 +52,21 @@ class BatchingAlgorithmTest {
     restaurantAddress = "Restaurant A";
   }
 
+  /** Creates a new order with the given times. Order IDs are auto‑incremented. */
   private Order getOrder(Instant initialTime, Instant cookedTime, Instant deliveryTime) {
     return new Order(ORDER_ID++, -1L, "", "", initialTime, deliveryTime, cookedTime, State.COOKING,
         false, -1L);
   }
 
+  /** Returns an Instant that is 'min' minutes in the future. */
   private Instant futureMinutes(int min) {
     return Instant.now().plus(Duration.ofMinutes(min));
   }
 
-  // Helper
+  /**
+   * Computes the last allowed cooked time for the first order in a batch, based on its destination
+   * and the hand‑deliver overhead.
+   */
   private Instant getLastAllowedCookedTime(Order firstOrder, String restaurantAddress) {
     int firstDeliverySeconds =
         mockRouteService.getSecondsBetween(restaurantAddress, firstOrder.destination)
@@ -65,7 +77,13 @@ class BatchingAlgorithmTest {
     return lastAllowedCookTime;
   }
 
-  // Helper
+  /**
+   * Checks invariants of the list of tentative batches: - No empty batches. - All order IDs are
+   * unique. - Batches are sorted by lastAllowedCookedTime descending. - For consecutive orders in a
+   * batch, the second order’s delivery time is later than the earliest possible arrival time after
+   * the first order. If checkEdges is false, the cross‑batch delivery time constraints are not
+   * verified.
+   */
   void checkInvariants(List<TentativeBatch> batches, boolean checkEdges) {
     Set<Long> orderIds = new HashSet<Long>();
     int size = 0;
@@ -82,7 +100,6 @@ class BatchingAlgorithmTest {
         if (j == 0) {
           assertTrue(Duration.between(getLastAllowedCookedTime(o, restaurantAddress), ct).abs()
               .toMillis() <= 1000);
-          // assertEquals(getLastAllowedCookedTime(o, restaurantAddress), ct);
           assert (o.cookedTime.isBefore(ct));
           if (i != batches.size() - 1) {
             assertFalse(nextCt.isAfter(ct));
@@ -100,6 +117,7 @@ class BatchingAlgorithmTest {
     assertEquals(size, orderIds.size());
   }
 
+  /** Tests that adding a single order creates a batch containing that order. */
   @Test
   void testAddSingleOrderCreatesNewBatch() throws Exception {
     when(mockRouteService.getSecondsBetween(anyString(), anyString())).thenReturn(120);
@@ -122,9 +140,15 @@ class BatchingAlgorithmTest {
     assertEquals(order, batch.getBatch().get(0));
   }
 
-
-
-  // Helper / Template
+  /**
+   * Helper method that runs a complete test scenario with uniform travel times.
+   *
+   * @param initialTimes list of initial times (minutes from now)
+   * @param cookedTimes list of cooked times (minutes from now)
+   * @param deliveredTimes list of delivery times (minutes from now)
+   * @param expectedAnswerInds list of expected batch contents (order indices)
+   * @param uniformTime uniform travel time in seconds between any two addresses
+   */
   void ordersUniform(List<Integer> initialTimes, List<Integer> cookedTimes,
       List<Integer> deliveredTimes, List<List<Integer>> expectedAnswerInds, int uniformTime)
       throws Exception {
@@ -180,8 +204,7 @@ class BatchingAlgorithmTest {
           order.initialTime, order.deliveryTime, order.cookedTime, State.COOKED, order.highPriority,
           order.batchId);
       when(mockDbOrderService.getOrder(anyLong())).thenReturn(other);
-      assertDoesNotThrow(
-          () -> batchingAlgorithm.updateOrderInplace(batches, order.id));
+      assertDoesNotThrow(() -> batchingAlgorithm.updateOrderInplace(batches, order.id));
       assertDoesNotThrow(() -> batchingAlgorithm.removeOrder(batches, order.id, restaurantAddress));
       assertThrows(IllegalArgumentException.class,
           () -> batchingAlgorithm.removeOrder(batches, order.id, restaurantAddress));
@@ -202,7 +225,7 @@ class BatchingAlgorithmTest {
     }
   }
 
-
+  /** Tests various two‑order scenarios with uniform travel times. */
   @Test
   void twoOrders() throws Exception {
     int uniformTravelTime = 2 * 60; // 2 minutes in seconds
@@ -237,11 +260,11 @@ class BatchingAlgorithmTest {
     ordersUniform(initialTimes, cookedTimes, deliveredTimes, expectedAnswerInds, uniformTravelTime);
   }
 
+  /** Tests various three‑order scenarios with uniform travel times. */
   @Test
   void threeOrders() throws Exception {
     int uniformTravelTime = 2 * 60; // 2 minutes in seconds
-    int t = uniformTravelTime / 60 + CEIL_MINS_TO_HAND_DELIVER; // minutes per leg
-                                                                // (including
+    int t = uniformTravelTime / 60 + CEIL_MINS_TO_HAND_DELIVER; // minutes per leg (including
                                                                 // hand‑deliver)
 
     List<Integer> initialTimes; // not used by algorithm, set to 0 for all orders
@@ -306,6 +329,7 @@ class BatchingAlgorithmTest {
     ordersUniform(initialTimes, cookedTimes, deliveredTimes, expectedAnswerInds, uniformTravelTime);
   }
 
+  /** Verifies that orders with significantly different cooked times go to separate batches. */
   @Test
   void testAddOrdersCreatesMultipleBatchesWhenNecessary() throws Exception {
     when(mockRouteService.getSecondsBetween(anyString(), anyString())).thenReturn(360);
@@ -325,6 +349,7 @@ class BatchingAlgorithmTest {
     assertEquals(3, batches.size());
   }
 
+  /** Tests that orders with identical delivery times cannot be in the same batch. */
   @Test
   void testOrderCannotFollowPreviousDueToDeliveryTime() throws Exception {
     when(mockRouteService.getSecondsBetween(anyString(), anyString())).thenReturn(10);
@@ -335,7 +360,7 @@ class BatchingAlgorithmTest {
     Order order2 =
         getOrder(futureMinutes(0), futureMinutes(0), futureMinutes(1 + CEIL_MINS_TO_HAND_DELIVER)); // same
                                                                                                     // delivery
-    // time
+                                                                                                    // time
 
     batchingAlgorithm.addOrder(batches, order1, restaurantAddress);
     batchingAlgorithm.addOrder(batches, order2, restaurantAddress);
@@ -344,7 +369,7 @@ class BatchingAlgorithmTest {
         "Orders with conflicting delivery times should be in separate batches");
   }
 
-
+  /** Tests ten orders that all fit into one batch. */
   @Test
   void tenOrdersAllInOneBatch() throws Exception {
     int uniformTravelTime = 2 * 60; // 2 minutes in seconds
@@ -373,6 +398,7 @@ class BatchingAlgorithmTest {
     ordersUniform(initialTimes, cookedTimes, deliveredTimes, expectedAnswerInds, uniformTravelTime);
   }
 
+  /** Tests ten orders split into two batches by even/odd cooked times. */
   @Test
   void tenOrdersTwoBatchesEvenOdd() throws Exception {
     int uniformTravelTime = 2 * 60;
@@ -394,6 +420,7 @@ class BatchingAlgorithmTest {
     ordersUniform(initialTimes, cookedTimes, deliveredTimes, expectedAnswerInds, uniformTravelTime);
   }
 
+  /** Tests ten orders split into three batches based on cooked times. */
   @Test
   void tenOrdersThreeBatchesByCookedTime() throws Exception {
     int uniformTravelTime = 2 * 60;
@@ -416,6 +443,7 @@ class BatchingAlgorithmTest {
     ordersUniform(initialTimes, cookedTimes, deliveredTimes, expectedAnswerInds, uniformTravelTime);
   }
 
+  /** Tests a larger scenario with 50 orders forming 10 batches, verifying reordering. */
   @Test
   void fiftyOrdersTenBatchesReordered() throws Exception {
     int uniformTravelTime = 2 * 60; // 2 minutes in seconds
@@ -454,8 +482,7 @@ class BatchingAlgorithmTest {
     ordersUniform(initialTimes, cookedTimes, deliveredTimes, expectedAnswerInds, uniformTravelTime);
   }
 
-
-  // Helper to create an order with a specific destination
+  /** Helper to create an order with a specific destination. */
   private Order getOrder(Instant initialTime, Instant cookedTime, Instant deliveryTime,
       String destination) {
     Order order = new Order(ORDER_ID++, -1L, destination, "", initialTime, deliveryTime, cookedTime,
@@ -481,8 +508,17 @@ class BatchingAlgorithmTest {
     });
   }
 
-  // A flexible test method similar to ordersUniform but accepting a travel time map and a list of
-  // destinations
+  /**
+   * A flexible test method similar to ordersUniform but accepts a travel time map and a list of
+   * destinations.
+   *
+   * @param initialTimes list of initial times (minutes from now)
+   * @param cookedTimes list of cooked times (minutes from now)
+   * @param deliveredTimes list of delivery times (minutes from now)
+   * @param destinations list of destination addresses
+   * @param travelTimeMap map of origin→destination to travel seconds
+   * @param expectedAnswerInds list of expected batch contents (order indices)
+   */
   void ordersNonUniform(List<Integer> initialTimes, List<Integer> cookedTimes,
       List<Integer> deliveredTimes, List<String> destinations, Map<String, Integer> travelTimeMap,
       List<List<Integer>> expectedAnswerInds) throws Exception {
@@ -550,6 +586,7 @@ class BatchingAlgorithmTest {
   // Non‑uniform travel time tests
   // ---------------------------------------------------------------------
 
+  /** Two orders with different travel times that still fit in one batch. */
   @Test
   void twoOrdersDifferentTravelTimesStillBatch() throws Exception {
     // Two orders, both cooked at 5 min. Destinations: A and B.
@@ -564,8 +601,7 @@ class BatchingAlgorithmTest {
 
     List<Integer> initialTimes = List.of(0, 0);
     List<Integer> cookedTimes = List.of(5, 5);
-    List<Integer> deliveredTimes = List.of(5 + tA / 60 + CEIL_MINS_TO_HAND_DELIVER, // delivery
-                                                                                    // A =
+    List<Integer> deliveredTimes = List.of(5 + tA / 60 + CEIL_MINS_TO_HAND_DELIVER, // delivery A =
                                                                                     // cooked +
                                                                                     // travelA+hand
                                                                                     // + buffer
@@ -579,6 +615,7 @@ class BatchingAlgorithmTest {
         expected);
   }
 
+  /** Two orders with different travel times that must go to separate batches. */
   @Test
   void twoOrdersDifferentTravelTimesSeparateBatches() throws Exception {
     // Travel to B is very long, causing the batch's latestAllowedCookedTime to be too early for
@@ -605,6 +642,7 @@ class BatchingAlgorithmTest {
         expected);
   }
 
+  /** Three orders with mixed travel times that still form a single batch. */
   @Test
   void threeOrdersMixedTravelTimesReordering() throws Exception {
     // Orders with different travel times that cause reordering of batches.
@@ -634,6 +672,10 @@ class BatchingAlgorithmTest {
         expected);
   }
 
+  /**
+   * Three orders with mixed travel times that still form a single batch (different order of
+   * insertion).
+   */
   @Test
   void threeOrdersMixedTravelTimesReordering2() throws Exception {
     // Orders with different travel times that cause reordering of batches.
@@ -664,6 +706,7 @@ class BatchingAlgorithmTest {
         expected);
   }
 
+  /** Three orders where one cannot follow another due to tight delivery time, causing a split. */
   @Test
   void threeOrdersTravelTimesCauseSplit() throws Exception {
     // Similar but order2 has too tight delivery, cannot follow order1.
@@ -685,6 +728,7 @@ class BatchingAlgorithmTest {
         expected);
   }
 
+  /** Another three‑order scenario with different travel times causing a split. */
   @Test
   void threeOrdersTravelTimesCauseSplit2() throws Exception {
     // Similar but order2 has too tight delivery, cannot follow order1.

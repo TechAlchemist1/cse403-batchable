@@ -10,7 +10,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.springframework.stereotype.Service;
 import com.batchable.backend.db.models.Order;
-import com.batchable.backend.db.models.Order.State;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.Cache;
 
@@ -321,6 +320,8 @@ public class BatchingAlgorithm {
   private Instant getLastAllowedCookedTime(Order firstOrder, String restaurantAddress) {
     int firstDeliverySeconds = secondsToMakeDelivery(restaurantAddress, firstOrder.destination);
     Instant lastAllowedCookedTime =
+        // We subtract one to make it easier to use whole minutes in tests,
+        // alternatively could have just made SECONDS_TO_HAND_DELIVER not divisible by 60
         firstOrder.deliveryTime.minus(Duration.ofSeconds(firstDeliverySeconds - 1));
     return lastAllowedCookedTime;
   }
@@ -339,6 +340,8 @@ public class BatchingAlgorithm {
       return false;
     }
     int deliverySeconds = secondsToMakeDelivery(from.destination, to.destination);
+    // We subtract one to make it easier to use whole minutes in tests,
+    // alternatively could have just made SECONDS_TO_HAND_DELIVER not divisible by 60
     Instant earliestArrival = from.deliveryTime.plus(Duration.ofSeconds(deliverySeconds - 1));
     return earliestArrival.isBefore(to.deliveryTime);
   }

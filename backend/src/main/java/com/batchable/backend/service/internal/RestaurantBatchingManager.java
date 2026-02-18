@@ -17,7 +17,6 @@ import com.batchable.backend.service.RouteService;
 import com.batchable.backend.service.BatchingAlgorithm.TentativeBatch;
 import com.batchable.backend.service.DbOrderService;
 import com.batchable.backend.service.DriverService;
-import com.batchable.backend.service.OrderService;
 import com.batchable.backend.service.RestaurantService;
 import com.batchable.backend.websocket.OrderWebSocketPublisher;
 
@@ -88,6 +87,8 @@ public class RestaurantBatchingManager {
    */
   public static class Batches {
     private final List<TentativeBatch> tentativeBatches;
+    // we use a queue for readyBatches to efficiently assign batches that were
+    // ready first to drivers
     private final Queue<ReadyBatch> readyBatches;
     private final List<Batch> activeBatches;
 

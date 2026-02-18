@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Queue;
 import java.util.function.Consumer;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -37,6 +36,17 @@ import com.batchable.backend.service.internal.RestaurantBatchingManager.Batches;
 import com.batchable.backend.service.internal.RestaurantBatchingManager.ReadyBatch;
 import com.batchable.backend.websocket.OrderWebSocketPublisher;
 
+/**
+ * Unit tests for RestaurantBatchingManager using Mockito.
+ *
+ * This test class verifies: - Delegation of order operations (add, remove, update) to the batching
+ * algorithm. - Handling of active, ready, and tentative batches during removal and update. -
+ * Registration and invocation of batch change and activation listeners. - Correct behaviour of
+ * checkExpiredBatches in various scenarios (mixed cooked/uncooked, only expired, full flow). -
+ * Driver availability logic (getReadyDrivers). - Batch assignment and activation. - Delay of
+ * remaining ready batches. - Constructor behaviour with null or custom Batches. - Publisher refresh
+ * calls after batch processing.
+ */
 @ExtendWith(MockitoExtension.class)
 class RestaurantBatchingManagerTest {
 
@@ -61,26 +71,26 @@ class RestaurantBatchingManagerTest {
   private static final long ADDITIONAL_COOK_TIME_SEC = 180;
   private static final long UPDATE_MILLIS = 60000;
 
-  // Helper to create an order – now accepts batchId
+  /** Creates an order with the given parameters, including an optional batchId. */
   private Order createOrder(long id, State state, Instant cookedTime, Instant deliveryTime,
       Long batchId) {
     return new Order(id, RESTAURANT_ID, "dest" + id, "[]", Instant.now(), deliveryTime, cookedTime,
         state, false, batchId);
   }
 
-  // Overload for convenience when batchId is null
+  /** Convenience overload when batchId is null. */
   private Order createOrder(long id, State state, Instant cookedTime, Instant deliveryTime) {
     return createOrder(id, state, cookedTime, deliveryTime, null);
   }
 
-  // Helper to create a tentative batch with orders sorted by delivery time (ascending)
+  /** Creates a tentative batch with orders sorted by delivery time (ascending). */
   private TentativeBatch createTentativeBatch(List<Order> orders, Instant expiration) {
     List<Order> sortedOrders = new ArrayList<>(orders);
     sortedOrders.sort(Comparator.comparing(o -> o.deliveryTime));
     return new TentativeBatch(sortedOrders, expiration);
   }
 
-  // Helper to create a RouteDirectionsResponse
+  /** Creates a RouteDirectionsResponse with the given polyline and duration. */
   private RouteDirectionsResponse createRouteResponse(String polyline, int durationSeconds) {
     RouteDirectionsResponse response = new RouteDirectionsResponse();
     response.setPolyline(polyline);
@@ -88,7 +98,10 @@ class RestaurantBatchingManagerTest {
     return response;
   }
 
-  // Helper to verify order delay with the correct three‑argument methods
+  /**
+   * Verifies that an order has been delayed correctly: - deliveryTime and cookedTime are both
+   * increased by ADDITIONAL_COOK_TIME_SEC.
+   */
   private void verifyOrderDelayed(Order order, Instant originalDelivery, Instant originalCooked) {
     verify(dbOrderService).updateOrderDeliveryTime(eq(order.id), instantCaptor.capture());
     assertEquals(originalDelivery.plusSeconds(ADDITIONAL_COOK_TIME_SEC), instantCaptor.getValue());
@@ -98,6 +111,8 @@ class RestaurantBatchingManagerTest {
   }
 
   // --- Delegation tests for addOrder ---
+
+  /** Verifies that addOrder delegates to the batching algorithm. */
   @Test
   void addOrder_delegatesToBatchingAlgorithm() {
     Batches emptyBatches = new Batches();
@@ -111,6 +126,11 @@ class RestaurantBatchingManagerTest {
   }
 
   // --- Tests for removeOrder ---
+
+  /**
+   * When order is in an active batch, removeOrder should emit a batch change and not touch the
+   * algorithm.
+   */
   @Test
   void removeOrder_whenOrderInActiveBatch_emitsChangeAndDoesNotDelegateToAlgorithm() {
     Batches emptyBatches = new Batches();
@@ -118,7 +138,6 @@ class RestaurantBatchingManagerTest {
         new RestaurantBatchingManager(RESTAURANT_ID, ADDRESS, publisher, batchingAlgorithm,
             routeService, dbOrderService, driverService, restaurantService, emptyBatches);
 
-    // Create order with batchId = 100L (active batch)
     Order order =
         createOrder(42L, State.DRIVING, Instant.now(), Instant.now().plusSeconds(300), 100L);
     when(dbOrderService.getOrder(42L)).thenReturn(order);
@@ -132,12 +151,12 @@ class RestaurantBatchingManagerTest {
     verify(batchingAlgorithm, never()).removeOrder(anyList(), anyLong(), anyString());
   }
 
+  /** When order is in a ready batch, removeOrder should remove it from that batch. */
   @Test
   void removeOrder_whenOrderInReadyBatch_removesFromReadyBatch() {
     Instant now = Instant.now();
-    Order order = createOrder(42L, State.COOKED, now, now.plusSeconds(300)); // batchId = null
+    Order order = createOrder(42L, State.COOKED, now, now.plusSeconds(300));
 
-    // Prepare a ready batch containing this order
     List<TentativeBatch> tentative = new ArrayList<>();
     Queue<ReadyBatch> ready = new LinkedList<>();
     ready.add(new ReadyBatch(new ArrayList<>(List.of(order))));
@@ -156,6 +175,7 @@ class RestaurantBatchingManagerTest {
     verify(batchingAlgorithm, never()).removeOrder(anyList(), anyLong(), anyString());
   }
 
+  /** When order is in a tentative batch, removeOrder delegates to the algorithm. */
   @Test
   void removeOrder_whenOrderInTentativeBatch_delegatesToAlgorithm() {
     Batches emptyBatches = new Batches();
@@ -163,9 +183,7 @@ class RestaurantBatchingManagerTest {
         new RestaurantBatchingManager(RESTAURANT_ID, ADDRESS, publisher, batchingAlgorithm,
             routeService, dbOrderService, driverService, restaurantService, emptyBatches);
 
-    Order order = createOrder(42L, State.COOKING, Instant.now(), Instant.now().plusSeconds(300)); // batchId
-                                                                                                  // =
-                                                                                                  // null
+    Order order = createOrder(42L, State.COOKING, Instant.now(), Instant.now().plusSeconds(300));
     when(dbOrderService.getOrder(42L)).thenReturn(order);
 
     mgr.removeOrder(42L);
@@ -174,6 +192,8 @@ class RestaurantBatchingManagerTest {
   }
 
   // --- Tests for updateOrder ---
+
+  /** When order is in an active batch, updateOrder emits a batch change. */
   @Test
   void updateOrder_whenOrderInActiveBatch_emitsChange() {
     Batches emptyBatches = new Batches();
@@ -195,13 +215,12 @@ class RestaurantBatchingManagerTest {
     verify(batchingAlgorithm, never()).updateOrderInplace(anyList(), anyLong());
   }
 
+  /** When order is in a ready batch, updateOrder updates it in place. */
   @Test
   void updateOrder_whenOrderInReadyBatch_updatesInPlace() {
     Instant now = Instant.now();
-    Order originalOrder = createOrder(42L, State.COOKED, now, now.plusSeconds(300)); // batchId =
-                                                                                     // null
+    Order originalOrder = createOrder(42L, State.COOKED, now, now.plusSeconds(300));
 
-    // Ready batch containing this order
     List<TentativeBatch> tentative = new ArrayList<>();
     Queue<ReadyBatch> ready = new LinkedList<>();
     ready.add(new ReadyBatch(new ArrayList<>(List.of(originalOrder))));
@@ -222,6 +241,7 @@ class RestaurantBatchingManagerTest {
     verify(batchingAlgorithm, never()).updateOrderInplace(anyList(), anyLong());
   }
 
+  /** When order is in a tentative batch and rebatchIfTentative is true, it rebatches. */
   @Test
   void updateOrder_whenOrderInTentativeAndRebatchTrue_rebatches() {
     Batches emptyBatches = new Batches();
@@ -229,9 +249,7 @@ class RestaurantBatchingManagerTest {
         new RestaurantBatchingManager(RESTAURANT_ID, ADDRESS, publisher, batchingAlgorithm,
             routeService, dbOrderService, driverService, restaurantService, emptyBatches);
 
-    Order order = createOrder(42L, State.COOKING, Instant.now(), Instant.now().plusSeconds(300)); // batchId
-                                                                                                  // =
-                                                                                                  // null
+    Order order = createOrder(42L, State.COOKING, Instant.now(), Instant.now().plusSeconds(300));
     when(dbOrderService.getOrder(42L)).thenReturn(order);
 
     mgr.updateOrder(42L, true);
@@ -239,6 +257,7 @@ class RestaurantBatchingManagerTest {
     verify(batchingAlgorithm).rebatchOrder(emptyBatches.getTentativeBatches(), order, ADDRESS);
   }
 
+  /** When order is in a tentative batch and rebatchIfTentative is false, it updates in place. */
   @Test
   void updateOrder_whenOrderInTentativeAndRebatchFalse_updatesInPlace() {
     Batches emptyBatches = new Batches();
@@ -246,9 +265,7 @@ class RestaurantBatchingManagerTest {
         new RestaurantBatchingManager(RESTAURANT_ID, ADDRESS, publisher, batchingAlgorithm,
             routeService, dbOrderService, driverService, restaurantService, emptyBatches);
 
-    Order order = createOrder(42L, State.COOKING, Instant.now(), Instant.now().plusSeconds(300)); // batchId
-                                                                                                  // =
-                                                                                                  // null
+    Order order = createOrder(42L, State.COOKING, Instant.now(), Instant.now().plusSeconds(300));
     when(dbOrderService.getOrder(42L)).thenReturn(order);
 
     mgr.updateOrder(42L, false);
@@ -257,6 +274,8 @@ class RestaurantBatchingManagerTest {
   }
 
   // --- rebatchTentativeOrder delegation ---
+
+  /** Verifies that rebatchTentativeOrder delegates to the algorithm. */
   @Test
   void rebatchTentativeOrder_delegatesToBatchingAlgorithm() {
     Batches emptyBatches = new Batches();
@@ -270,6 +289,8 @@ class RestaurantBatchingManagerTest {
   }
 
   // --- updateTentativeOrderInplace delegation ---
+
+  /** Verifies that updateTentativeOrderInplace delegates to the algorithm. */
   @Test
   void updateTentativeOrderInplace_delegatesToBatchingAlgorithm() {
     Batches emptyBatches = new Batches();
@@ -281,7 +302,9 @@ class RestaurantBatchingManagerTest {
     verify(batchingAlgorithm).updateOrderInplace(emptyBatches.getTentativeBatches(), 42L);
   }
 
-  // --- getReadyDrivers tests (unchanged) ---
+  // --- getReadyDrivers tests ---
+
+  /** Verifies that getReadyDrivers returns only available drivers, up to the requested maximum. */
   @Test
   void getReadyDrivers_returnsOnlyAvailableDrivers_upToMax() {
     Batches emptyBatches = new Batches();
@@ -306,6 +329,7 @@ class RestaurantBatchingManagerTest {
     assertFalse(readyDrivers.contains(d2));
   }
 
+  /** Verifies that getReadyDrivers returns fewer if not enough drivers are available. */
   @Test
   void getReadyDrivers_returnsFewerIfNotEnoughAvailable() {
     Batches emptyBatches = new Batches();
@@ -326,6 +350,7 @@ class RestaurantBatchingManagerTest {
     assertTrue(readyDrivers.contains(d1));
   }
 
+  /** Verifies that getReadyDrivers throws for negative max and allows zero. */
   @Test
   void getReadyDrivers_throwsIfMaxNonPositive() {
     Batches emptyBatches = new Batches();
@@ -337,10 +362,11 @@ class RestaurantBatchingManagerTest {
     assertThrows(IllegalArgumentException.class, () -> mgr.getReadyDrivers(-1));
   }
 
-  // --- checkExpiredBatches tests (updated for publisher refresh) ---
+  // --- checkExpiredBatches tests ---
+
+  /** Moves an expired batch with all cooked orders to ready, then assigns it to a driver. */
   @Test
   void checkExpiredBatches_movesExpiredCookedBatchToReady() {
-    // Given: all orders are COOKED (ready)
     Instant now = Instant.now();
     Instant expiration = now.minusSeconds(10);
     Order order1 = createOrder(1L, State.COOKED, now.minus(Duration.ofMinutes(5)),
@@ -358,7 +384,6 @@ class RestaurantBatchingManagerTest {
         new RestaurantBatchingManager(RESTAURANT_ID, ADDRESS, publisher, batchingAlgorithm,
             routeService, dbOrderService, driverService, restaurantService, customBatches);
 
-    // Set up a driver so that the ready batch gets assigned
     Driver driver = new Driver(10L, RESTAURANT_ID, "D", "", true);
     when(restaurantService.getRestaurantDrivers(RESTAURANT_ID)).thenReturn(List.of(driver));
     when(driverService.isAvailable(10L)).thenReturn(true);
@@ -386,6 +411,10 @@ class RestaurantBatchingManagerTest {
     verify(publisher).refreshOrderData(RESTAURANT_ID);
   }
 
+  /**
+   * Expired batch with mixed cooked/uncooked: uncooked are delayed and re-added, cooked become
+   * ready.
+   */
   @Test
   void checkExpiredBatches_handlesMixedCookedAndUncooked() {
     Instant now = Instant.now();
@@ -428,6 +457,7 @@ class RestaurantBatchingManagerTest {
     verify(publisher).refreshOrderData(RESTAURANT_ID);
   }
 
+  /** Expired batch with all uncooked: all are delayed and re-added, no ready batch remains. */
   @Test
   void checkExpiredBatches_handlesAllUncooked() {
     Instant now = Instant.now();
@@ -470,6 +500,7 @@ class RestaurantBatchingManagerTest {
     verify(publisher).refreshOrderData(RESTAURANT_ID);
   }
 
+  /** Only expired batches are processed; future batches remain untouched. */
   @Test
   void checkExpiredBatches_onlyProcessesExpiredBatches() {
     Instant now = Instant.now();
@@ -508,6 +539,7 @@ class RestaurantBatchingManagerTest {
     verify(publisher).refreshOrderData(RESTAURANT_ID);
   }
 
+  /** Assigns ready batches to available drivers, activates them, and notifies listeners. */
   @Test
   void assignReadyBatchesToDrivers_assignsToAvailableDrivers() {
     Instant now = Instant.now();
@@ -546,8 +578,7 @@ class RestaurantBatchingManagerTest {
 
     Consumer<Long> becomeActiveListener = mock(Consumer.class);
     mgr.onBatchBecomeActive(becomeActiveListener);
-    Consumer<Long> changeListener = mock(Consumer.class); // still registered but not expected to be
-                                                          // called
+    Consumer<Long> changeListener = mock(Consumer.class);
     mgr.onBatchChange(changeListener);
 
     mgr.checkExpiredBatches(UPDATE_MILLIS);
@@ -563,11 +594,12 @@ class RestaurantBatchingManagerTest {
     verify(dbOrderService, times(2)).getOrder(anyLong());
     verify(dbOrderService, times(2)).createBatch(any(Batch.class));
     verify(becomeActiveListener, times(2)).accept(anyLong());
-    verify(changeListener, never()).accept(anyLong()); // change listener should not be called
-                                                       // during activation
+    verify(changeListener, never()).accept(anyLong()); // change listener not called during
+                                                       // activation
     verify(publisher).refreshOrderData(RESTAURANT_ID);
   }
 
+  /** When no drivers are available, ready batches are left and not assigned. */
   @Test
   void assignReadyBatchesToDrivers_noDriversLeavesBatches() {
     Instant now = Instant.now();
@@ -599,6 +631,7 @@ class RestaurantBatchingManagerTest {
     verify(publisher).refreshOrderData(RESTAURANT_ID);
   }
 
+  /** Unassigned ready batches have their delivery times delayed. */
   @Test
   void delayRemainingReadyBatches_updatesDeliveryTimes() {
     Instant originalDelivery = Instant.now().plusSeconds(300);
@@ -632,43 +665,7 @@ class RestaurantBatchingManagerTest {
     verify(publisher).refreshOrderData(RESTAURANT_ID);
   }
 
-  @Test
-  void onBatchesChange_listenerInvokedWhenBatchBecomesActive() {
-    Instant now = Instant.now();
-    Order o = createOrder(1L, State.COOKED, now.minus(Duration.ofMinutes(1)),
-        now.plus(Duration.ofMinutes(5)));
-
-    List<TentativeBatch> tentative = new ArrayList<>();
-    tentative.add(createTentativeBatch(List.of(o), now.minusSeconds(10)));
-    Queue<ReadyBatch> ready = new LinkedList<>();
-    List<Batch> active = new ArrayList<>();
-    Batches customBatches = new Batches(tentative, ready, active);
-
-    RestaurantBatchingManager mgr =
-        new RestaurantBatchingManager(RESTAURANT_ID, ADDRESS, publisher, batchingAlgorithm,
-            routeService, dbOrderService, driverService, restaurantService, customBatches);
-
-    Driver d = new Driver(10L, RESTAURANT_ID, "D", "", true);
-    when(restaurantService.getRestaurantDrivers(RESTAURANT_ID)).thenReturn(List.of(d));
-    when(driverService.isAvailable(10L)).thenReturn(true);
-
-    RouteDirectionsResponse routeResp = createRouteResponse("poly", 120);
-    when(routeService.getRouteDirections(eq(ADDRESS), anyList(), eq(false))).thenReturn(routeResp);
-    when(dbOrderService.createBatch(any(Batch.class))).thenReturn(100L);
-    when(dbOrderService.getBatch(100L))
-        .thenReturn(new Batch(100L, d.id, "poly", now, now.plusSeconds(120)));
-
-    when(dbOrderService.getOrder(1L)).thenReturn(o);
-
-    Consumer<Long> listener = mock(Consumer.class);
-    mgr.onBatchBecomeActive(listener);
-
-    mgr.checkExpiredBatches(UPDATE_MILLIS);
-
-    verify(listener, atLeastOnce()).accept(anyLong());
-    verify(publisher).refreshOrderData(RESTAURANT_ID);
-  }
-
+  /** Batch become‑active listener is invoked when a batch is activated. */
   @Test
   void onBatchBecomeActive_listenerInvokedWhenBatchActivated() {
     Instant now = Instant.now();
@@ -705,6 +702,7 @@ class RestaurantBatchingManagerTest {
     verify(publisher).refreshOrderData(RESTAURANT_ID);
   }
 
+  /** RemoveUncookedOrders handles all order states and delays them appropriately. */
   @Test
   void removeUncookedOrders_handlesAllOrderStates() {
     Instant now = Instant.now();
@@ -739,6 +737,7 @@ class RestaurantBatchingManagerTest {
     verify(publisher).refreshOrderData(RESTAURANT_ID);
   }
 
+  /** delayOrder updates both cooked and delivery times by the additional time. */
   @Test
   void delayOrder_updatesBothTimes() {
     Order order = createOrder(1L, State.DRIVING, Instant.parse("2025-01-01T10:00:00Z"),
@@ -773,6 +772,7 @@ class RestaurantBatchingManagerTest {
     verify(publisher).refreshOrderData(RESTAURANT_ID);
   }
 
+  /** Full end‑to‑end test with multiple batches, expired and future, and driver assignment. */
   @Test
   void checkExpiredBatches_fullFlow() {
     Instant now = Instant.now();
@@ -846,6 +846,7 @@ class RestaurantBatchingManagerTest {
     verify(publisher).refreshOrderData(RESTAURANT_ID);
   }
 
+  /** Constructor creates empty Batches when null is passed. */
   @Test
   void constructor_createsEmptyBatchesWhenNullPassed() {
     RestaurantBatchingManager mgr = new RestaurantBatchingManager(RESTAURANT_ID, ADDRESS, publisher,
@@ -856,6 +857,7 @@ class RestaurantBatchingManagerTest {
     assertTrue(b.getActiveBatches().isEmpty());
   }
 
+  /** Constructor uses the provided Batches instance. */
   @Test
   void constructor_usesProvidedBatches() {
     List<TentativeBatch> tb = new ArrayList<>();
