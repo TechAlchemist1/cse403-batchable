@@ -56,16 +56,21 @@ class RestaurantBatchingManagerTest {
   @Captor
   private ArgumentCaptor<Instant> instantCaptor;
 
-  private long nextOrderId = 1L;
   private static final long RESTAURANT_ID = 1L;
   private static final String ADDRESS = "123 Main St";
   private static final long ADDITIONAL_COOK_TIME_SEC = 180;
   private static final long UPDATE_MILLIS = 60000;
 
-  // Helper to create an order
-  private Order createOrder(long id, State state, Instant cookedTime, Instant deliveryTime) {
+  // Helper to create an order – now accepts batchId
+  private Order createOrder(long id, State state, Instant cookedTime, Instant deliveryTime,
+      Long batchId) {
     return new Order(id, RESTAURANT_ID, "dest" + id, "[]", Instant.now(), deliveryTime, cookedTime,
-        state, false, null);
+        state, false, batchId);
+  }
+
+  // Overload for convenience when batchId is null
+  private Order createOrder(long id, State state, Instant cookedTime, Instant deliveryTime) {
+    return createOrder(id, state, cookedTime, deliveryTime, null);
   }
 
   // Helper to create a tentative batch with orders sorted by delivery time (ascending)
@@ -83,16 +88,16 @@ class RestaurantBatchingManagerTest {
     return response;
   }
 
-  // Helper to verify order delay
+  // Helper to verify order delay with the correct three‑argument methods
   private void verifyOrderDelayed(Order order, Instant originalDelivery, Instant originalCooked) {
-    verify(orderService).updateOrderDeliveryTime(eq(order.id), instantCaptor.capture());
+    verify(orderService).updateOrderDeliveryTime(eq(order.id), instantCaptor.capture(), eq(true));
     assertEquals(originalDelivery.plusSeconds(ADDITIONAL_COOK_TIME_SEC), instantCaptor.getValue());
 
-    verify(orderService).updateOrderCookedTime(eq(order.id), instantCaptor.capture());
+    verify(orderService).updateOrderCookedTime(eq(order.id), instantCaptor.capture(), eq(true));
     assertEquals(originalCooked.plusSeconds(ADDITIONAL_COOK_TIME_SEC), instantCaptor.getValue());
   }
 
-  // --- Delegation tests ---
+  // --- Delegation tests for addOrder ---
   @Test
   void addOrder_delegatesToBatchingAlgorithm() {
     Batches emptyBatches = new Batches();
@@ -105,42 +110,178 @@ class RestaurantBatchingManagerTest {
     verify(batchingAlgorithm).addOrder(emptyBatches.getTentativeBatches(), order, ADDRESS);
   }
 
+  // --- Tests for removeOrder ---
   @Test
-  void removeOrder_delegatesToBatchingAlgorithm() {
+  void removeOrder_whenOrderInActiveBatch_emitsChangeAndDoesNotDelegateToAlgorithm() {
     Batches emptyBatches = new Batches();
     RestaurantBatchingManager mgr =
         new RestaurantBatchingManager(RESTAURANT_ID, ADDRESS, publisher, batchingAlgorithm,
             routeService, orderService, driverService, restaurantService, emptyBatches);
 
+    // Create order with batchId = 100L (active batch)
+    Order order =
+        createOrder(42L, State.DRIVING, Instant.now(), Instant.now().plusSeconds(300), 100L);
+    when(orderService.getOrder(42L)).thenReturn(order);
+
+    Consumer<Long> changeListener = mock(Consumer.class);
+    mgr.onBatchChange(changeListener);
+
     mgr.removeOrder(42L);
-    verify(batchingAlgorithm).removeOrder(emptyBatches.getTentativeBatches(), 42L, ADDRESS);
+
+    verify(changeListener).accept(100L);
+    verify(batchingAlgorithm, never()).removeOrder(anyList(), anyLong(), anyString());
   }
 
   @Test
-  void rebatchOrder_delegatesToBatchingAlgorithm() {
+  void removeOrder_whenOrderInReadyBatch_removesFromReadyBatch() {
+    Instant now = Instant.now();
+    Order order = createOrder(42L, State.COOKED, now, now.plusSeconds(300)); // batchId = null
+
+    // Prepare a ready batch containing this order
+    List<TentativeBatch> tentative = new ArrayList<>();
+    Queue<ReadyBatch> ready = new LinkedList<>();
+    ready.add(new ReadyBatch(new ArrayList<>(List.of(order))));
+    List<Batch> active = new ArrayList<>();
+    Batches customBatches = new Batches(tentative, ready, active);
+
+    RestaurantBatchingManager mgr =
+        new RestaurantBatchingManager(RESTAURANT_ID, ADDRESS, publisher, batchingAlgorithm,
+            routeService, orderService, driverService, restaurantService, customBatches);
+
+    when(orderService.getOrder(42L)).thenReturn(order);
+
+    mgr.removeOrder(42L);
+
+    assertTrue(mgr.getBatches().getReadyBatches().peek().getBatch().isEmpty());
+    verify(batchingAlgorithm, never()).removeOrder(anyList(), anyLong(), anyString());
+  }
+
+  @Test
+  void removeOrder_whenOrderInTentativeBatch_delegatesToAlgorithm() {
+    Batches emptyBatches = new Batches();
+    RestaurantBatchingManager mgr =
+        new RestaurantBatchingManager(RESTAURANT_ID, ADDRESS, publisher, batchingAlgorithm,
+            routeService, orderService, driverService, restaurantService, emptyBatches);
+
+    Order order = createOrder(42L, State.COOKING, Instant.now(), Instant.now().plusSeconds(300)); // batchId
+                                                                                                  // =
+                                                                                                  // null
+    when(orderService.getOrder(42L)).thenReturn(order);
+
+    mgr.removeOrder(42L);
+
+    verify(batchingAlgorithm).removeOrder(emptyBatches.getTentativeBatches(), 42L, ADDRESS);
+  }
+
+  // --- Tests for updateOrder ---
+  @Test
+  void updateOrder_whenOrderInActiveBatch_emitsChange() {
+    Batches emptyBatches = new Batches();
+    RestaurantBatchingManager mgr =
+        new RestaurantBatchingManager(RESTAURANT_ID, ADDRESS, publisher, batchingAlgorithm,
+            routeService, orderService, driverService, restaurantService, emptyBatches);
+
+    Order order =
+        createOrder(42L, State.DRIVING, Instant.now(), Instant.now().plusSeconds(300), 100L);
+    when(orderService.getOrder(42L)).thenReturn(order);
+
+    Consumer<Long> changeListener = mock(Consumer.class);
+    mgr.onBatchChange(changeListener);
+
+    mgr.updateOrder(42L, false);
+
+    verify(changeListener).accept(100L);
+    verify(batchingAlgorithm, never()).rebatchOrder(anyList(), any(), anyString());
+    verify(batchingAlgorithm, never()).updateOrderInplace(anyList(), anyLong());
+  }
+
+  @Test
+  void updateOrder_whenOrderInReadyBatch_updatesInPlace() {
+    Instant now = Instant.now();
+    Order originalOrder = createOrder(42L, State.COOKED, now, now.plusSeconds(300)); // batchId =
+                                                                                     // null
+
+    // Ready batch containing this order
+    List<TentativeBatch> tentative = new ArrayList<>();
+    Queue<ReadyBatch> ready = new LinkedList<>();
+    ready.add(new ReadyBatch(new ArrayList<>(List.of(originalOrder))));
+    List<Batch> active = new ArrayList<>();
+    Batches customBatches = new Batches(tentative, ready, active);
+
+    RestaurantBatchingManager mgr =
+        new RestaurantBatchingManager(RESTAURANT_ID, ADDRESS, publisher, batchingAlgorithm,
+            routeService, orderService, driverService, restaurantService, customBatches);
+
+    Order updatedOrder = createOrder(42L, State.COOKED, now, now.plusSeconds(350));
+    when(orderService.getOrder(42L)).thenReturn(updatedOrder);
+
+    mgr.updateOrder(42L, false);
+
+    assertEquals(updatedOrder, mgr.getBatches().getReadyBatches().peek().getBatch().get(0));
+    verify(batchingAlgorithm, never()).rebatchOrder(anyList(), any(), anyString());
+    verify(batchingAlgorithm, never()).updateOrderInplace(anyList(), anyLong());
+  }
+
+  @Test
+  void updateOrder_whenOrderInTentativeAndRebatchTrue_rebatches() {
+    Batches emptyBatches = new Batches();
+    RestaurantBatchingManager mgr =
+        new RestaurantBatchingManager(RESTAURANT_ID, ADDRESS, publisher, batchingAlgorithm,
+            routeService, orderService, driverService, restaurantService, emptyBatches);
+
+    Order order = createOrder(42L, State.COOKING, Instant.now(), Instant.now().plusSeconds(300)); // batchId
+                                                                                                  // =
+                                                                                                  // null
+    when(orderService.getOrder(42L)).thenReturn(order);
+
+    mgr.updateOrder(42L, true);
+
+    verify(batchingAlgorithm).rebatchOrder(emptyBatches.getTentativeBatches(), order, ADDRESS);
+  }
+
+  @Test
+  void updateOrder_whenOrderInTentativeAndRebatchFalse_updatesInPlace() {
+    Batches emptyBatches = new Batches();
+    RestaurantBatchingManager mgr =
+        new RestaurantBatchingManager(RESTAURANT_ID, ADDRESS, publisher, batchingAlgorithm,
+            routeService, orderService, driverService, restaurantService, emptyBatches);
+
+    Order order = createOrder(42L, State.COOKING, Instant.now(), Instant.now().plusSeconds(300)); // batchId
+                                                                                                  // =
+                                                                                                  // null
+    when(orderService.getOrder(42L)).thenReturn(order);
+
+    mgr.updateOrder(42L, false);
+
+    verify(batchingAlgorithm).updateOrderInplace(emptyBatches.getTentativeBatches(), 42L);
+  }
+
+  // --- rebatchTentativeOrder delegation ---
+  @Test
+  void rebatchTentativeOrder_delegatesToBatchingAlgorithm() {
     Batches emptyBatches = new Batches();
     RestaurantBatchingManager mgr =
         new RestaurantBatchingManager(RESTAURANT_ID, ADDRESS, publisher, batchingAlgorithm,
             routeService, orderService, driverService, restaurantService, emptyBatches);
 
     Order order = mock(Order.class);
-    mgr.rebatchOrder(order);
+    mgr.rebatchTentativeOrder(order);
     verify(batchingAlgorithm).rebatchOrder(emptyBatches.getTentativeBatches(), order, ADDRESS);
   }
 
+  // --- updateTentativeOrderInplace delegation ---
   @Test
-  void updateOrderState_delegatesToBatchingAlgorithm() {
+  void updateTentativeOrderInplace_delegatesToBatchingAlgorithm() {
     Batches emptyBatches = new Batches();
     RestaurantBatchingManager mgr =
         new RestaurantBatchingManager(RESTAURANT_ID, ADDRESS, publisher, batchingAlgorithm,
             routeService, orderService, driverService, restaurantService, emptyBatches);
 
-    mgr.updateOrderState(10L, State.COOKING);
-    verify(batchingAlgorithm).updateOrderState(emptyBatches.getTentativeBatches(), 10L,
-        State.COOKING);
+    mgr.updateTentativeOrderInplace(42L);
+    verify(batchingAlgorithm).updateOrderInplace(emptyBatches.getTentativeBatches(), 42L);
   }
 
-  // --- getReadyDrivers tests ---
+  // --- getReadyDrivers tests (unchanged) ---
   @Test
   void getReadyDrivers_returnsOnlyAvailableDrivers_upToMax() {
     Batches emptyBatches = new Batches();
@@ -196,8 +337,7 @@ class RestaurantBatchingManagerTest {
     assertThrows(IllegalArgumentException.class, () -> mgr.getReadyDrivers(-1));
   }
 
-  // --- Tests that require controlled batches ---
-
+  // --- checkExpiredBatches tests (updated for publisher refresh) ---
   @Test
   void checkExpiredBatches_movesExpiredCookedBatchToReady() {
     // Given: all orders are COOKED (ready)
@@ -218,40 +358,36 @@ class RestaurantBatchingManagerTest {
         new RestaurantBatchingManager(RESTAURANT_ID, ADDRESS, publisher, batchingAlgorithm,
             routeService, orderService, driverService, restaurantService, customBatches);
 
-    // Set up a driver so that the ready batch gets assigned and delay does NOT run
+    // Set up a driver so that the ready batch gets assigned
     Driver driver = new Driver(10L, RESTAURANT_ID, "D", "", true);
     when(restaurantService.getRestaurantDrivers(RESTAURANT_ID)).thenReturn(List.of(driver));
     when(driverService.isAvailable(10L)).thenReturn(true);
 
-    // Mock route and batch creation for the ready batch (both orders in one batch)
     RouteDirectionsResponse routeResp = createRouteResponse("poly", 300);
     when(routeService.getRouteDirections(eq(ADDRESS), anyList(), eq(false))).thenReturn(routeResp);
     when(orderService.createBatch(any(Batch.class))).thenReturn(100L);
     Batch createdBatch = new Batch(100L, driver.id, "poly", now, now.plusSeconds(300));
     when(orderService.getBatch(100L)).thenReturn(createdBatch);
 
-    // Stub getOrder for orders after batch assignment (called by updateOrdersWithBatchId)
     when(orderService.getOrder(1L)).thenReturn(order1);
     when(orderService.getOrder(2L)).thenReturn(order2);
 
-    // When
     mgr.checkExpiredBatches(UPDATE_MILLIS);
 
-    // Then
     Batches result = mgr.getBatches();
     assertTrue(result.getTentativeBatches().isEmpty());
-    assertTrue(result.getReadyBatches().isEmpty()); // batch was assigned, not left in ready
+    assertTrue(result.getReadyBatches().isEmpty()); // batch was assigned
     assertEquals(1, result.getActiveBatches().size());
     assertEquals(createdBatch, result.getActiveBatches().get(0));
 
-    verify(orderService, never()).updateOrderDeliveryTime(anyLong(), any());
-    verify(orderService, never()).updateOrderCookedTime(anyLong(), any());
+    verify(orderService, never()).updateOrderDeliveryTime(anyLong(), any(), anyBoolean());
+    verify(orderService, never()).updateOrderCookedTime(anyLong(), any(), anyBoolean());
     verify(batchingAlgorithm, never()).addOrder(anyList(), any(), anyString());
+    verify(publisher).refreshOrderData(RESTAURANT_ID);
   }
 
   @Test
   void checkExpiredBatches_handlesMixedCookedAndUncooked() {
-    // Given: one COOKED, one not COOKED
     Instant now = Instant.now();
     Instant expiration = now.minusSeconds(5);
     Order cooked = createOrder(1L, State.COOKED, now.minus(Duration.ofMinutes(2)),
@@ -273,17 +409,13 @@ class RestaurantBatchingManagerTest {
         createOrder(2L, State.DRIVING, uncooked.cookedTime.plusSeconds(ADDITIONAL_COOK_TIME_SEC),
             uncooked.deliveryTime.plusSeconds(ADDITIONAL_COOK_TIME_SEC));
     when(orderService.getOrder(2L)).thenReturn(updatedUncooked);
-    // Cooked order will be in ready batch and may be delayed if no drivers
     when(orderService.getOrder(1L)).thenReturn(cooked);
 
-    // Stub getReadyDrivers to empty so that ready batch is not assigned (delay runs)
     RestaurantBatchingManager spyMgr = spy(mgr);
     doReturn(new LinkedList<>()).when(spyMgr).getReadyDrivers(anyInt());
 
-    // When
     spyMgr.checkExpiredBatches(UPDATE_MILLIS);
 
-    // Then
     Batches result = spyMgr.getBatches();
     assertTrue(result.getTentativeBatches().isEmpty());
     assertEquals(1, result.getReadyBatches().size());
@@ -293,11 +425,11 @@ class RestaurantBatchingManagerTest {
     verify(orderService).getOrder(2L);
     verify(batchingAlgorithm).addOrder(customBatches.getTentativeBatches(), updatedUncooked,
         ADDRESS);
+    verify(publisher).refreshOrderData(RESTAURANT_ID);
   }
 
   @Test
   void checkExpiredBatches_handlesAllUncooked() {
-    // Given: all orders are not COOKED
     Instant now = Instant.now();
     Instant expiration = now.minusSeconds(5);
     Order uncooked1 = createOrder(1L, State.DRIVING, now.plus(Duration.ofMinutes(5)),
@@ -327,21 +459,19 @@ class RestaurantBatchingManagerTest {
     RestaurantBatchingManager spyMgr = spy(mgr);
     doReturn(new LinkedList<>()).when(spyMgr).getReadyDrivers(anyInt());
 
-    // When
     spyMgr.checkExpiredBatches(UPDATE_MILLIS);
 
-    // Then
     Batches result = spyMgr.getBatches();
     verifyOrderDelayed(uncooked1, uncooked1.deliveryTime, uncooked1.cookedTime);
     verifyOrderDelayed(uncooked2, uncooked2.deliveryTime, uncooked2.cookedTime);
     verify(batchingAlgorithm).addOrder(customBatches.getTentativeBatches(), updated1, ADDRESS);
     verify(batchingAlgorithm).addOrder(customBatches.getTentativeBatches(), updated2, ADDRESS);
     assertTrue(result.getReadyBatches().isEmpty());
+    verify(publisher).refreshOrderData(RESTAURANT_ID);
   }
 
   @Test
   void checkExpiredBatches_onlyProcessesExpiredBatches() {
-    // Given: one expired, one future batch – added in descending order (future first, expired last)
     Instant now = Instant.now();
     Instant expired = now.minusSeconds(10);
     Instant future = now.plusSeconds(30);
@@ -352,8 +482,8 @@ class RestaurantBatchingManagerTest {
         now.plus(Duration.ofMinutes(20)));
 
     List<TentativeBatch> tentative = new ArrayList<>();
-    tentative.add(createTentativeBatch(List.of(futureOrder), future)); // later expiration first
-    tentative.add(createTentativeBatch(List.of(expiredOrder), expired)); // earlier expiration last
+    tentative.add(createTentativeBatch(List.of(futureOrder), future));
+    tentative.add(createTentativeBatch(List.of(expiredOrder), expired));
     Queue<ReadyBatch> ready = new LinkedList<>();
     List<Batch> active = new ArrayList<>();
     Batches customBatches = new Batches(tentative, ready, active);
@@ -365,24 +495,21 @@ class RestaurantBatchingManagerTest {
     RestaurantBatchingManager spyMgr = spy(mgr);
     doReturn(new LinkedList<>()).when(spyMgr).getReadyDrivers(anyInt());
 
-    // Stub getOrder for expired order (will be in ready batch and delayed)
     when(orderService.getOrder(1L)).thenReturn(expiredOrder);
 
-    // When
     spyMgr.checkExpiredBatches(UPDATE_MILLIS);
 
-    // Then
     Batches result = spyMgr.getBatches();
     assertEquals(1, result.getTentativeBatches().size());
     assertEquals(futureOrder, result.getTentativeBatches().get(0).getBatch().get(0));
     assertEquals(0, result.getActiveBatches().size());
     assertEquals(1, result.getReadyBatches().size());
     assertEquals(expiredOrder, result.getReadyBatches().peek().getBatch().get(0));
+    verify(publisher).refreshOrderData(RESTAURANT_ID);
   }
 
   @Test
   void assignReadyBatchesToDrivers_assignsToAvailableDrivers() {
-    // Given: orders in ready batch are COOKED
     Instant now = Instant.now();
     Order o1 = createOrder(1L, State.COOKED, now, now.plus(Duration.ofMinutes(10)));
     Order o2 = createOrder(2L, State.COOKED, now, now.plus(Duration.ofMinutes(12)));
@@ -401,8 +528,9 @@ class RestaurantBatchingManagerTest {
     Driver d1 = new Driver(10L, RESTAURANT_ID, "D1", "", true);
     Driver d2 = new Driver(11L, RESTAURANT_ID, "D2", "", true);
 
-    RestaurantBatchingManager spyMgr = spy(mgr);
-    doReturn(new LinkedList<>(List.of(d1, d2))).when(spyMgr).getReadyDrivers(anyInt());
+    when(restaurantService.getRestaurantDrivers(RESTAURANT_ID)).thenReturn(List.of(d1, d2));
+    when(driverService.isAvailable(10L)).thenReturn(true);
+    when(driverService.isAvailable(11L)).thenReturn(true);
 
     RouteDirectionsResponse routeResp = createRouteResponse("polyline", 600);
     when(routeService.getRouteDirections(eq(ADDRESS), anyList(), eq(false))).thenReturn(routeResp);
@@ -413,34 +541,35 @@ class RestaurantBatchingManagerTest {
     when(orderService.getBatch(100L)).thenReturn(batch1);
     when(orderService.getBatch(101L)).thenReturn(batch2);
 
-    // Stub getOrder for orders after batch assignment
     when(orderService.getOrder(1L)).thenReturn(o1);
     when(orderService.getOrder(2L)).thenReturn(o2);
 
-    Consumer<Batch> becomeActiveListener = mock(Consumer.class);
-    spyMgr.onBatchBecomeActive(becomeActiveListener);
-    Consumer<Batches> changeListener = mock(Consumer.class);
-    spyMgr.onBatchesChange(changeListener);
+    Consumer<Long> becomeActiveListener = mock(Consumer.class);
+    mgr.onBatchBecomeActive(becomeActiveListener);
+    Consumer<Long> changeListener = mock(Consumer.class); // still registered but not expected to be
+                                                          // called
+    mgr.onBatchChange(changeListener);
 
-    // When
-    spyMgr.checkExpiredBatches(UPDATE_MILLIS);
+    mgr.checkExpiredBatches(UPDATE_MILLIS);
 
-    // Then
-    Batches result = spyMgr.getBatches();
+    Batches result = mgr.getBatches();
     assertTrue(result.getReadyBatches().isEmpty());
     assertEquals(2, result.getActiveBatches().size());
 
     verify(orderService).setOrderBatchId(1L, 100L);
+    verify(orderService).advanceOrderState(1L, true);
     verify(orderService).setOrderBatchId(2L, 101L);
+    verify(orderService).advanceOrderState(2L, true);
     verify(orderService, times(2)).getOrder(anyLong());
     verify(orderService, times(2)).createBatch(any(Batch.class));
-    verify(becomeActiveListener, times(2)).accept(any(Batch.class));
-    verify(changeListener, times(2)).accept(any(Batches.class));
+    verify(becomeActiveListener, times(2)).accept(anyLong());
+    verify(changeListener, never()).accept(anyLong()); // change listener should not be called
+                                                       // during activation
+    verify(publisher).refreshOrderData(RESTAURANT_ID);
   }
 
   @Test
   void assignReadyBatchesToDrivers_noDriversLeavesBatches() {
-    // Given: order in ready batch is COOKED
     Instant now = Instant.now();
     Order o1 = createOrder(1L, State.COOKED, now, now.plus(Duration.ofMinutes(10)));
 
@@ -457,24 +586,21 @@ class RestaurantBatchingManagerTest {
     RestaurantBatchingManager spyMgr = spy(mgr);
     doReturn(new LinkedList<>()).when(spyMgr).getReadyDrivers(anyInt());
 
-    // Stub getOrder for order (will be delayed)
     when(orderService.getOrder(1L)).thenReturn(o1);
 
-    // When
     spyMgr.checkExpiredBatches(UPDATE_MILLIS);
 
-    // Then
     Batches result = spyMgr.getBatches();
     assertEquals(1, result.getReadyBatches().size());
     assertTrue(result.getActiveBatches().isEmpty());
 
     verify(orderService, never()).setOrderBatchId(anyLong(), anyLong());
     verify(orderService, never()).createBatch(any());
+    verify(publisher).refreshOrderData(RESTAURANT_ID);
   }
 
   @Test
   void delayRemainingReadyBatches_updatesDeliveryTimes() {
-    // Given: order in ready batch is COOKED
     Instant originalDelivery = Instant.now().plusSeconds(300);
     Instant cookedTime = Instant.now();
     Order o1 = createOrder(1L, State.COOKED, cookedTime, originalDelivery);
@@ -496,26 +622,24 @@ class RestaurantBatchingManagerTest {
     RestaurantBatchingManager spyMgr = spy(mgr);
     doReturn(new LinkedList<>()).when(spyMgr).getReadyDrivers(anyInt());
 
-    // When
     spyMgr.checkExpiredBatches(UPDATE_MILLIS);
 
-    // Then
-    verify(orderService).updateOrderDeliveryTime(eq(1L), instantCaptor.capture());
+    verify(orderService).updateOrderDeliveryTime(eq(1L), instantCaptor.capture(), eq(true));
     assertEquals(originalDelivery.plusMillis(UPDATE_MILLIS), instantCaptor.getValue());
 
     Batches result = spyMgr.getBatches();
     assertEquals(updatedOrder, result.getReadyBatches().peek().getBatch().get(0));
+    verify(publisher).refreshOrderData(RESTAURANT_ID);
   }
 
   @Test
   void onBatchesChange_listenerInvokedWhenBatchBecomesActive() {
-    // To trigger a change, we need a batch to become active (driver available)
     Instant now = Instant.now();
     Order o = createOrder(1L, State.COOKED, now.minus(Duration.ofMinutes(1)),
         now.plus(Duration.ofMinutes(5)));
 
     List<TentativeBatch> tentative = new ArrayList<>();
-    tentative.add(createTentativeBatch(List.of(o), now.minusSeconds(10))); // expired
+    tentative.add(createTentativeBatch(List.of(o), now.minusSeconds(10)));
     Queue<ReadyBatch> ready = new LinkedList<>();
     List<Batch> active = new ArrayList<>();
     Batches customBatches = new Batches(tentative, ready, active);
@@ -524,34 +648,29 @@ class RestaurantBatchingManagerTest {
         new RestaurantBatchingManager(RESTAURANT_ID, ADDRESS, publisher, batchingAlgorithm,
             routeService, orderService, driverService, restaurantService, customBatches);
 
-    // Provide a driver so that ready batch gets assigned
     Driver d = new Driver(10L, RESTAURANT_ID, "D", "", true);
     when(restaurantService.getRestaurantDrivers(RESTAURANT_ID)).thenReturn(List.of(d));
     when(driverService.isAvailable(10L)).thenReturn(true);
 
-    // Mock route and batch creation
     RouteDirectionsResponse routeResp = createRouteResponse("poly", 120);
     when(routeService.getRouteDirections(eq(ADDRESS), anyList(), eq(false))).thenReturn(routeResp);
     when(orderService.createBatch(any(Batch.class))).thenReturn(100L);
     when(orderService.getBatch(100L))
         .thenReturn(new Batch(100L, d.id, "poly", now, now.plusSeconds(120)));
 
-    // Stub getOrder for the order after assignment
     when(orderService.getOrder(1L)).thenReturn(o);
 
-    Consumer<Batches> listener = mock(Consumer.class);
-    mgr.onBatchesChange(listener);
+    Consumer<Long> listener = mock(Consumer.class);
+    mgr.onBatchBecomeActive(listener);
 
-    // When
     mgr.checkExpiredBatches(UPDATE_MILLIS);
 
-    // Then
-    verify(listener).accept(any(Batches.class));
+    verify(listener, atLeastOnce()).accept(anyLong());
+    verify(publisher).refreshOrderData(RESTAURANT_ID);
   }
 
   @Test
   void onBatchBecomeActive_listenerInvokedWhenBatchActivated() {
-    // Given
     Instant now = Instant.now();
     Order o = createOrder(1L, State.COOKED, now, now.plus(Duration.ofMinutes(5)));
 
@@ -575,22 +694,19 @@ class RestaurantBatchingManagerTest {
     when(orderService.getBatch(100L))
         .thenReturn(new Batch(100L, d.id, "poly", now, now.plusSeconds(120)));
 
-    // Stub getOrder for order after assignment
     when(orderService.getOrder(1L)).thenReturn(o);
 
-    Consumer<Batch> listener = mock(Consumer.class);
+    Consumer<Long> listener = mock(Consumer.class);
     mgr.onBatchBecomeActive(listener);
 
-    // When
     mgr.checkExpiredBatches(UPDATE_MILLIS);
 
-    // Then
-    verify(listener).accept(any(Batch.class));
+    verify(listener).accept(100L);
+    verify(publisher).refreshOrderData(RESTAURANT_ID);
   }
 
   @Test
   void removeUncookedOrders_handlesAllOrderStates() {
-    // Given
     Instant now = Instant.now();
     Order delivered = createOrder(1L, State.DELIVERED, now.plus(Duration.ofMinutes(2)),
         now.plus(Duration.ofMinutes(10)));
@@ -613,20 +729,18 @@ class RestaurantBatchingManagerTest {
     RestaurantBatchingManager spyMgr = spy(mgr);
     doReturn(new LinkedList<>()).when(spyMgr).getReadyDrivers(anyInt());
 
-    // When
     spyMgr.checkExpiredBatches(UPDATE_MILLIS);
 
-    // Then
-    verify(orderService).updateOrderDeliveryTime(eq(1L), any());
-    verify(orderService).updateOrderCookedTime(eq(1L), any());
+    verify(orderService).updateOrderDeliveryTime(eq(1L), any(Instant.class), eq(true));
+    verify(orderService).updateOrderCookedTime(eq(1L), any(Instant.class), eq(true));
     verify(batchingAlgorithm).addOrder(customBatches.getTentativeBatches(), updatedDelivered,
         ADDRESS);
     assertTrue(spyMgr.getBatches().getReadyBatches().isEmpty());
+    verify(publisher).refreshOrderData(RESTAURANT_ID);
   }
 
   @Test
   void delayOrder_updatesBothTimes() {
-    // Given
     Order order = createOrder(1L, State.DRIVING, Instant.parse("2025-01-01T10:00:00Z"),
         Instant.parse("2025-01-01T10:30:00Z"));
 
@@ -648,21 +762,19 @@ class RestaurantBatchingManagerTest {
     RestaurantBatchingManager spyMgr = spy(mgr);
     doReturn(new LinkedList<>()).when(spyMgr).getReadyDrivers(anyInt());
 
-    // When
     spyMgr.checkExpiredBatches(UPDATE_MILLIS);
 
-    // Then
-    verify(orderService).updateOrderDeliveryTime(eq(1L), instantCaptor.capture());
+    verify(orderService).updateOrderDeliveryTime(eq(1L), instantCaptor.capture(), eq(true));
     assertEquals(order.deliveryTime.plusSeconds(ADDITIONAL_COOK_TIME_SEC),
         instantCaptor.getValue());
 
-    verify(orderService).updateOrderCookedTime(eq(1L), instantCaptor.capture());
+    verify(orderService).updateOrderCookedTime(eq(1L), instantCaptor.capture(), eq(true));
     assertEquals(order.cookedTime.plusSeconds(ADDITIONAL_COOK_TIME_SEC), instantCaptor.getValue());
+    verify(publisher).refreshOrderData(RESTAURANT_ID);
   }
 
   @Test
   void checkExpiredBatches_fullFlow() {
-    // Given: two tentative batches – one expired (mixed), one future – added in descending order
     Instant now = Instant.now();
 
     Order cooked1 = createOrder(1L, State.COOKED, now.minus(Duration.ofMinutes(5)),
@@ -670,12 +782,10 @@ class RestaurantBatchingManagerTest {
     Order uncooked1 = createOrder(2L, State.DRIVING, now.plus(Duration.ofMinutes(2)),
         now.plus(Duration.ofMinutes(15)));
     Order cooked2 = createOrder(3L, State.COOKING, now.plus(Duration.ofMinutes(1)),
-        now.plus(Duration.ofMinutes(20))); // stays in tentative
+        now.plus(Duration.ofMinutes(20)));
 
     List<TentativeBatch> tentative = new ArrayList<>();
-    // Future batch first (later expiration)
     tentative.add(createTentativeBatch(List.of(cooked2), now.plusSeconds(30)));
-    // Expired batch second (earlier expiration) – must be last for correct descending order
     tentative.add(
         createTentativeBatch(new ArrayList<>(List.of(uncooked1, cooked1)), now.minusSeconds(10)));
 
@@ -703,25 +813,19 @@ class RestaurantBatchingManagerTest {
     Batch createdBatch = new Batch(200L, driver.id, "poly", now, now.plusSeconds(300));
     when(orderService.getBatch(200L)).thenReturn(createdBatch);
 
-    // Stub getOrder for cooked1 after assignment
     when(orderService.getOrder(1L)).thenReturn(cooked1);
 
-    // Simulate batchingAlgorithm.addOrder actually adding the order to the list
     doAnswer(invocation -> {
       List<TentativeBatch> list = invocation.getArgument(0);
       Order order = invocation.getArgument(1);
-      // Add the order as a new tentative batch with a far future expiration so it's not immediately
-      // expired
       list.add(new TentativeBatch(List.of(order), Instant.now().plusSeconds(1000)));
       return null;
     }).when(batchingAlgorithm).addOrder(anyList(), any(Order.class), anyString());
 
-    // When
     mgr.checkExpiredBatches(UPDATE_MILLIS);
 
-    // Then
     Batches result = mgr.getBatches();
-    assertEquals(2, result.getTentativeBatches().size()); // future + re-added uncooked
+    assertEquals(2, result.getTentativeBatches().size());
     assertTrue(result.getReadyBatches().isEmpty());
     assertEquals(1, result.getActiveBatches().size());
     assertEquals(createdBatch, result.getActiveBatches().get(0));
@@ -735,9 +839,11 @@ class RestaurantBatchingManagerTest {
     assertTrue(foundCooked2);
 
     verify(orderService).setOrderBatchId(1L, 200L);
+    verify(orderService).advanceOrderState(1L, true);
     verify(orderService).getOrder(1L);
-    verify(orderService).updateOrderDeliveryTime(eq(2L), any());
-    verify(orderService).updateOrderCookedTime(eq(2L), any());
+    verify(orderService).updateOrderDeliveryTime(eq(2L), any(), eq(true));
+    verify(orderService).updateOrderCookedTime(eq(2L), any(), eq(true));
+    verify(publisher).refreshOrderData(RESTAURANT_ID);
   }
 
   @Test

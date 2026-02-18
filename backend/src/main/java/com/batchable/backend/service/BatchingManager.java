@@ -70,20 +70,68 @@ public class BatchingManager {
   }
 
   /**
-   * Retrieves the batching manager for a restaurant, creating it if it doesn't exist.
+   * Retrieves the batching manager for a restaurant, throwing an exception if it does not exist.
    *
    * @param restaurantId the restaurant's ID
    * @return the batching manager for the restaurant
+   * @throws IllegalArgumentException if no batching manager corresponds to the ID
    */
   private RestaurantBatchingManager getManager(long restaurantId) {
     if (!restaurantManagers.containsKey(restaurantId)) {
-      Restaurant restaurant = restaurantService.getRestaurant(restaurantId);
-      String address = restaurant.location;
-      restaurantManagers.put(restaurantId,
-          new RestaurantBatchingManager(restaurantId, address, publisher, batchingAlgorithm,
-              routeService, orderService, driverService, restaurantService, null));
+      throw new IllegalArgumentException("Cannot get RestaurantBatchingManager for id "
+          + restaurantId + "because it does not exist.");
     }
     return restaurantManagers.get(restaurantId);
+  }
+
+  /**
+   * Adds a new restaurant manager for the given restaurant ID. Creates a RestaurantBatchingManager
+   * instance using the restaurant's address and stores it in the internal map.
+   *
+   * @param restaurantId the ID of the restaurant to add
+   * @throws IllegalArgumentException if a manager for that restaurant already exists
+   */
+  public void addManager(long restaurantId) {
+    if (restaurantManagers.containsKey(restaurantId)) {
+      throw new IllegalArgumentException("Cannot add RestaurantBatchingManager for id "
+          + restaurantId + "because it already exists.");
+    }
+    Restaurant restaurant = restaurantService.getRestaurant(restaurantId);
+    String address = restaurant.location;
+    restaurantManagers.put(restaurantId,
+        new RestaurantBatchingManager(restaurantId, address, publisher, batchingAlgorithm,
+            routeService, orderService, driverService, restaurantService, null));
+  }
+
+  /**
+   * Updates the address of an existing restaurant manager. The change is propagated to the
+   * associated RestaurantBatchingManager.
+   *
+   * @param restaurantId the ID of the restaurant whose address changed
+   * @param restaurantAddress the new address
+   * @throws IllegalArgumentException if no manager exists for the given restaurant ID
+   */
+  public void updateManagerAddress(long restaurantId, String restaurantAddress) {
+    if (!restaurantManagers.containsKey(restaurantId)) {
+      throw new IllegalArgumentException("Cannot update RestaurantBatchingManager for id "
+          + restaurantId + "because it does not exist.");
+    }
+    restaurantManagers.get(restaurantId).setRestaurantAddress(restaurantAddress);
+
+  }
+
+  /**
+   * Removes the restaurant manager for the given restaurant ID.
+   *
+   * @param restaurantId the ID of the restaurant to remove
+   * @throws IllegalArgumentException if no manager exists for the given restaurant ID
+   */
+  public void removeManager(long restaurantId) {
+    if (!restaurantManagers.containsKey(restaurantId)) {
+      throw new IllegalArgumentException("Cannot remove RestaurantBatchingManager for id "
+          + restaurantId + "because it does not exist.");
+    }
+    restaurantManagers.remove(restaurantId);
   }
 
   /**
@@ -92,8 +140,8 @@ public class BatchingManager {
    * @param restaurantId the restaurant ID
    * @param handler callback invoked with the restaurant's batch state
    */
-  public void onBatchesChange(long restaurantId, Consumer<Batches> handler) {
-    getManager(restaurantId).onBatchesChange(handler);
+  public void onBatchesChange(long restaurantId, Consumer<Long> handler) {
+    getManager(restaurantId).onBatchChange(handler);
   }
 
   /**
@@ -102,7 +150,7 @@ public class BatchingManager {
    * @param restaurantId the restaurant ID
    * @param handler callback invoked with the newly active batch
    */
-  public void onBatchBecomeActive(long restaurantId, Consumer<Batch> handler) {
+  public void onBatchBecomeActive(long restaurantId, Consumer<Long> handler) {
     getManager(restaurantId).onBatchBecomeActive(handler);
   }
 
@@ -127,32 +175,23 @@ public class BatchingManager {
     long restaurantId = order.restaurantId;
     getManager(restaurantId).removeOrder(orderId);
   }
-
+  
   /**
-   * Rebatches an existing order in the appropriate restaurant batching manager's structure.
+   * Updates an existing order and forwards the update to the batching manager for the order's
+   * restaurant.
    *
-   * The order is updated by removing the existing instance (by id) and re-adding it, ensuring all
-   * batching and delivery constraints are re-evaluated.
+   * If rebatchIfTentative is true and the order is currently part of a tentative batch, the order
+   * will be removed and re-added so that batching constraints are re-evaluated. Otherwise, the
+   * order is updated without rebatching.
    *
-   * @param order the updated order
-   * @throws IllegalArgumentException if the order id is not found
+   * @param orderId the ID of the order to update
+   * @param rebatchIfTentative whether to rebatch the order if it is currently part of a tentative
+   *        batch
    */
-  public void rebatchOrder(Order order) {
-    long restaurantId = order.restaurantId;
-    getManager(restaurantId).rebatchOrder(order);
-  }
-
-  /**
-   * Updates the state of an existing order within the approrpaite restauarant batching manager.
-   *
-   * @param orderId the id of the order to update
-   * @param newState the new state to assign to the order
-   * @throws IllegalArgumentException if the order id is not found
-   */
-  public void updateOrderState(Long orderId, State newState) {
+  public void updateOrder(Long orderId, boolean rebatchIfTentative) {
     Order order = orderService.getOrder(orderId);
     long restaurantId = order.restaurantId;
-    getManager(restaurantId).updateOrderState(orderId, newState);
+    getManager(restaurantId).updateOrder(orderId, rebatchIfTentative);
   }
 
   /**

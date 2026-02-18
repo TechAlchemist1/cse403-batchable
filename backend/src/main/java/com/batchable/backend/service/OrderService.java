@@ -27,14 +27,17 @@ public class OrderService {
   private final OrderDAO orderDAO;
   private final BatchDAO batchDAO;
   private final OrderWebSocketPublisher publisher;
+  private final BatchingManager batchingManager;
 
   public OrderService(
       OrderDAO orderDAO,
       BatchDAO batchDAO,
-      OrderWebSocketPublisher publisher) {
+      OrderWebSocketPublisher publisher,
+      BatchingManager batchingManager) {
     this.orderDAO = orderDAO;
     this.batchDAO = batchDAO;
     this.publisher = publisher;
+    this.batchingManager = batchingManager;
   }
 
   /**
@@ -87,8 +90,8 @@ public class OrderService {
           null
       );
 
-      publisher.refreshOrderData();
-
+      batchingManager.addOrder(order);
+      publisher.refreshOrderData(order.restaurantId);
       return id;
 
     } catch (SQLException e) {
@@ -115,7 +118,7 @@ public class OrderService {
    *      • No valid next state exists
    *  - RuntimeException if persistence fails
    */
-  public void advanceOrderState(long orderId) {
+  public void advanceOrderState(long orderId, boolean fromBatchingManager) {
     Order order = getOrder(orderId);
 
     if (order.state == Order.State.DELIVERED) {
@@ -134,9 +137,13 @@ public class OrderService {
       if (next == Order.State.DELIVERED) {
         orderDAO.updateOrderDeliveryTime(orderId, Instant.now());
       }
+      
+      if (!fromBatchingManager) {
+        batchingManager.updateOrder(orderId, false);
+      } 
 
       // Push update to frontend via WebSocket
-      publisher.refreshOrderData();
+      publisher.refreshOrderData(order.restaurantId);
 
     } catch (SQLException e) {
       throw new RuntimeException("Failed to advance order state", e);
@@ -179,7 +186,7 @@ public class OrderService {
    *      • Order is already DELIVERED
    *  - RuntimeException if persistence fails
    */
-  public void updateOrderCookedTime(long orderId, Instant cookedTime) {
+  public void updateOrderCookedTime(long orderId, Instant cookedTime, boolean fromBatchingManager) {
     if (cookedTime == null) {
       throw new IllegalArgumentException("cookedTime cannot be null");
     }
@@ -197,8 +204,12 @@ public class OrderService {
     try {
       orderDAO.updateOrderCookedTime(orderId, cookedTime);
 
+      if (!fromBatchingManager) {
+        batchingManager.updateOrder(orderId, true);
+      }
+
       // Push update to frontend via WebSocket
-      publisher.refreshOrderData();
+      publisher.refreshOrderData(order.restaurantId);
 
     } catch (SQLException e) {
       throw new RuntimeException("Failed to update cooked time", e);
@@ -226,7 +237,7 @@ public class OrderService {
    *      • deliveryTime < order.cookedTime
    *  - RuntimeException if persistence fails
    */
-  public void updateOrderDeliveryTime(long orderId, Instant deliveryTime) {
+  public void updateOrderDeliveryTime(long orderId, Instant deliveryTime, boolean fromBatchingManager) {
     if (deliveryTime == null) {
       throw new IllegalArgumentException("deliveryTime cannot be null");
     }
@@ -240,8 +251,12 @@ public class OrderService {
     try {
       orderDAO.updateOrderDeliveryTime(orderId, deliveryTime);
 
+      if (!fromBatchingManager) {
+        batchingManager.updateOrder(orderId, true);
+      }
+
       // Push update to frontend via WebSocket
-      publisher.refreshOrderData();
+      publisher.refreshOrderData(order.restaurantId);
 
     } catch (SQLException e) {
       throw new RuntimeException("Failed to update cooked time", e);
@@ -275,7 +290,7 @@ public class OrderService {
    *      • Order has been permanently finalized
    *  - RuntimeException if persistence fails
    */
-  public void remakeOrder(long orderId) {
+  public void remakeOrder(long orderId, boolean fromBatchingManager) {
     Order order = getOrder(orderId);
 
     if (order.state == Order.State.DELIVERED) {
@@ -285,8 +300,12 @@ public class OrderService {
     try {
       orderDAO.remakeOrder(orderId, Order.State.COOKING, true);
 
+      if (!fromBatchingManager) {
+        batchingManager.updateOrder(orderId, true);
+      }
+
       // Push update to frontend via WebSocket
-      publisher.refreshOrderData();
+      publisher.refreshOrderData(order.restaurantId);
 
     } catch (SQLException e) {
       throw new RuntimeException("Failed to remake order", e);
@@ -382,9 +401,6 @@ public class OrderService {
           batch.dispatchTime,
           batch.expectedCompletionTime
       );
-
-      publisher.refreshOrderData();
-
       return id;
     } catch (SQLException e) {
       throw new RuntimeException("Failed to create batch", e);
@@ -439,8 +455,8 @@ public class OrderService {
       orderDAO.deleteOrder(orderId);
 
       // Push update to frontend via WebSocket
-      publisher.refreshOrderData();
-
+      batchingManager.removeOrder(orderId);
+      publisher.refreshOrderData(order.restaurantId);
     } catch (SQLException e) {
       throw new RuntimeException("Failed to remove order", e);
     }
@@ -496,7 +512,8 @@ public class OrderService {
 
 
       // Push update to frontend via WebSocket
-      publisher.refreshOrderData();
+      publisher.refreshOrderData(order.restaurantId);
+
     } catch (SQLException e) {
       throw new RuntimeException("Failed to assign order " + orderId + " to batch " + batchId, e);
     }

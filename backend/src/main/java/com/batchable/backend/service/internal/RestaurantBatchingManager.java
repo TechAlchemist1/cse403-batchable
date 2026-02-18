@@ -7,7 +7,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 import java.util.function.Consumer;
-
 import com.batchable.backend.db.models.Batch;
 import com.batchable.backend.db.models.Driver;
 import com.batchable.backend.db.models.Order;
@@ -31,11 +30,11 @@ import com.batchable.backend.websocket.OrderWebSocketPublisher;
 public class RestaurantBatchingManager {
 
   private final long restaurantId;
-  private final String restaurantAddress;
+  private String restaurantAddress;
   private final OrderWebSocketPublisher publisher;
   private final BatchingAlgorithm batchingAlgorithm;
-  private final List<Consumer<Batches>> batchesChangeListeners = new ArrayList<>();
-  private final List<Consumer<Batch>> batchBecomeActiveListeners = new ArrayList<>();
+  private final List<Consumer<Long>> batchChangeListeners = new ArrayList<>();
+  private final List<Consumer<Long>> batchBecomeActiveListeners = new ArrayList<>();
   private final Batches batches;
   private final RouteService routeService;
   private final OrderService orderService;
@@ -126,26 +125,30 @@ public class RestaurantBatchingManager {
     return this.batches;
   }
 
+  public void setRestaurantAddress(String restaurantAddress) {
+    this.restaurantAddress = restaurantAddress;
+  }
+
   /**
-   * Registers a listener that will be called whenever batches change.
+   * Registers a listener that will be called whenever an active batch changes change.
    *
-   * @param handler callback receiving the current batches
+   * @param handler callback receiving the id of the batch that changed
    * @throws IllegalArgumentException if handler is null
    */
-  public void onBatchesChange(Consumer<Batches> handler) {
+  public void onBatchChange(Consumer<Long> handler) {
     if (handler == null) {
       throw new IllegalArgumentException("Handler cannot be null");
     }
-    batchesChangeListeners.add(handler);
+    batchChangeListeners.add(handler);
   }
 
   /**
    * Registers a listener that will be called whenever a batch becomes active.
    *
-   * @param handler callback receiving the newly active batch
+   * @param handler callback receiving the id of the newly active batch
    * @throws IllegalArgumentException if handler is null
    */
-  public void onBatchBecomeActive(Consumer<Batch> handler) {
+  public void onBatchBecomeActive(Consumer<Long> handler) {
     if (handler == null) {
       throw new IllegalArgumentException("Handler cannot be null");
     }
@@ -153,19 +156,17 @@ public class RestaurantBatchingManager {
   }
 
   /** Emits batch change events to all registered listeners. */
-  private void emitBatchesChange() {
-    for (Consumer<Batches> listener : batchesChangeListeners) {
-      listener.accept(this.batches);
+  private void emitBatchChange(long batchId) {
+    for (Consumer<Long> listener : batchChangeListeners) {
+      listener.accept(batchId);
     }
-    publisher.refreshOrderData();
   }
 
   /** Emits a batch become active event and also refreshes batch state. */
-  private void emitBatchBecomeActive(Batch batch) {
-    for (Consumer<Batch> listener : batchBecomeActiveListeners) {
-      listener.accept(batch);
+  private void emitBatchBecomeActive(long batchId) {
+    for (Consumer<Long> listener : batchBecomeActiveListeners) {
+      listener.accept(batchId);
     }
-    emitBatchesChange();
   }
 
   /**
@@ -178,29 +179,89 @@ public class RestaurantBatchingManager {
   }
 
   /**
-   * Removes an order to the restaurant's tentative batches by ID.
+   * Removes an order from restaurant's batches by ID.
    *
    * @param orderId the id of the order to remove
    * @throws IllegalArgumentException if the order id is not found
    */
   public void removeOrder(Long orderId) {
-    batchingAlgorithm.removeOrder(batches.tentativeBatches, orderId, restaurantAddress);
+    Order order = orderService.getOrder(orderId);
+    if (order.batchId != null) {
+      // in active batch
+      emitBatchChange(order.batchId);
+    } else if (!findAndUpdateReadyBatchOrder(orderId, true)) {
+      batchingAlgorithm.removeOrder(batches.tentativeBatches, orderId, restaurantAddress);
+    }
   }
 
   /**
-   * Rebatches an existing order in the batching structure.
+   * Updates an order across all batching states.
+   *
+   * If the order is part of an active batch, a batch change event is emitted. Otherwise, the method
+   * attempts to update the order within any ready batch. If the order is not found in a ready
+   * batch, it is handled as a tentative order: either rebatched (removed and re-added) or updated
+   * in place, depending on the rebatchIfTentative flag.
+   *
+   * @param orderId the ID of the order to update
+   * @param rebatchIfTentative whether to rebatch the order if it is currently part of a tentative
+   *        batch
+   */
+  public void updateOrder(Long orderId, boolean rebatchIfTentative) {
+    Order order = orderService.getOrder(orderId);
+    if (order.batchId != null) {
+      // in active batch
+      emitBatchChange(order.batchId);
+    } else if (!findAndUpdateReadyBatchOrder(orderId, false)) {
+      if (rebatchIfTentative) {
+        rebatchTentativeOrder(order);
+      } else {
+        updateTentativeOrderInplace(orderId);
+      }
+    }
+  }
+
+  /**
+   * Searches for an order in the ready batches and either removes it or updates it in place.
+   *
+   * @param orderId the ID of the order to find in the ready batches
+   * @param delete whether to remove the order from its ready batch; if false, the order is updated
+   *        in place
+   * @return true if the order was found in a ready batch; false otherwise
+   */
+  private boolean findAndUpdateReadyBatchOrder(long orderId, boolean delete) {
+    for (ReadyBatch readyBatch : batches.readyBatches) {
+      List<Order> batch = readyBatch.batch;
+      for (int i = 0; i < batch.size(); i++) {
+        Order order = batch.get(i);
+        if (order.id == orderId) {
+          if (delete) {
+            batch.remove(i);
+          } else {
+            // update
+            batch.set(i, orderService.getOrder(orderId));
+          }
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Rebatches an existing order within the tentative batches.
    *
    * The order is updated by removing the existing instance (by id) and re-adding it, ensuring all
    * batching and delivery constraints are re-evaluated.
    *
    * @param order the updated order
+   * @throws IllegalArgumentException if the order id is not found
    */
-  public void rebatchOrder(Order order) {
+  public void rebatchTentativeOrder(Order order) {
     batchingAlgorithm.rebatchOrder(batches.tentativeBatches, order, restaurantAddress);
   }
 
   /**
-   * Updates the state of an existing order within the tentative batches.
+   * Updates an existing order within the tentative batches in place.
    *
    * @param batches the list of tentative batches for a restaurant
    * @param orderId the id of the order to update
@@ -208,8 +269,8 @@ public class RestaurantBatchingManager {
    *
    * @throws IllegalArgumentException if the order id is not found
    */
-  public void updateOrderState(Long orderId, State newState) {
-    batchingAlgorithm.updateOrderState(batches.tentativeBatches, orderId, newState);
+  public void updateTentativeOrderInplace(Long orderId) {
+    batchingAlgorithm.updateOrderInplace(batches.tentativeBatches, orderId);
   }
 
   /**
@@ -230,6 +291,7 @@ public class RestaurantBatchingManager {
 
     assignReadyBatchesToDrivers();
     delayRemainingReadyBatches(updateMillis);
+    publisher.refreshOrderData(restaurantId);
   }
 
   /**
@@ -295,7 +357,7 @@ public class RestaurantBatchingManager {
 
       Batch batch = createAndPersistBatch(readyBatch, driver);
       batches.activeBatches.add(batch);
-      emitBatchBecomeActive(batch);
+      emitBatchBecomeActive(batch.id);
     }
   }
 
@@ -313,7 +375,7 @@ public class RestaurantBatchingManager {
         Order order = orders.get(i);
 
         orderService.updateOrderDeliveryTime(order.id,
-            millisAfter(order.deliveryTime, updateMillis));
+            millisAfter(order.deliveryTime, updateMillis), true);
 
         orders.set(i, orderService.getOrder(order.id));
       }
@@ -330,7 +392,7 @@ public class RestaurantBatchingManager {
    */
   public Queue<Driver> getReadyDrivers(int maxToGet) {
     if (maxToGet < 0) {
-      throw new IllegalArgumentException("maxToGet must be positive");
+      throw new IllegalArgumentException("maxToGet must be nonnegative");
     }
     Queue<Driver> readyDrivers = new LinkedList<Driver>();
     if (maxToGet == 0) {
@@ -369,23 +431,24 @@ public class RestaurantBatchingManager {
     Long batchId = orderService.createBatch(
         new Batch(-1, driver.id, resp.getPolyline(), dispatchTime, expectedCompletionTime));
 
-    updateOrdersWithBatchId(readyBatch.batch, batchId);
+    updateOrdersWithBatchIdAndAdvanceState(readyBatch.batch, batchId);
     return orderService.getBatch(batchId);
   }
 
   /**
-   * Updates each order in the given list to reference the provided batch ID.
+   * Updates each order in the given list to reference the provided batch ID, and advances its state
    *
    * This method persists the batch assignment via OrderService and then re-fetches each order from
    * the database to ensure the in-memory list reflects the latest state after mutation.
    *
-   * @param orders the orders to associate with the batch
+   * @param orders the orders to advance in state and associate with the batch
    * @param batchId the ID of the batch to assign to each order
    */
-  private void updateOrdersWithBatchId(List<Order> orders, Long batchId) {
+  private void updateOrdersWithBatchIdAndAdvanceState(List<Order> orders, Long batchId) {
     for (int i = 0; i < orders.size(); i++) {
       Order order = orders.get(i);
       orderService.setOrderBatchId(order.id, batchId);
+      orderService.advanceOrderState(order.id, true); // to DRIVING
       orders.set(i, orderService.getOrder(order.id));
     }
   }
@@ -421,10 +484,10 @@ public class RestaurantBatchingManager {
    */
   private void delayOrder(Order order) {
     orderService.updateOrderDeliveryTime(order.id,
-        secondsAfter(order.deliveryTime, SECONDS_ADDITIONAL_COOK_TIME));
+        secondsAfter(order.deliveryTime, SECONDS_ADDITIONAL_COOK_TIME), true);
 
     orderService.updateOrderCookedTime(order.id,
-        secondsAfter(order.cookedTime, SECONDS_ADDITIONAL_COOK_TIME));
+        secondsAfter(order.cookedTime, SECONDS_ADDITIONAL_COOK_TIME), true);
   }
 
   // returns the Instant 'millis' milliseconds after the given time

@@ -31,8 +31,8 @@ public class OrderWebSocketPublisher {
    * Design decision: - Payload is intentionally empty because we only need a "change signal" -
    * Keeps WebSocket simple and decouples it from the actual data structure
    */
-  public void refreshOrderData() {
-    messagingTemplate.convertAndSend("/topic/orders", "");
+  public void refreshOrderData(Long restaurantId) {
+    String destination = "/topic/orders/" + restaurantId;
+    messagingTemplate.convertAndSend(destination, "");
   }
-
 }

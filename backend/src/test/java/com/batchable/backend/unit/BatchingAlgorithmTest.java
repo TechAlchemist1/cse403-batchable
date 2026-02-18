@@ -175,16 +175,19 @@ class BatchingAlgorithmTest {
     int size = orders.size();
     for (Order order : orders) {
       int newSize = 0;
+      Order other = new Order(order.id, order.restaurantId, order.destination, order.itemNamesJson,
+          order.initialTime, order.deliveryTime, order.cookedTime, State.COOKED, order.highPriority,
+          order.batchId);
+      when(mockOrderService.getOrder(anyLong())).thenReturn(other);
       assertDoesNotThrow(
-        () -> batchingAlgorithm.updateOrderState(batches, order.id, State.COOKED));
-      assertDoesNotThrow(
-          () -> batchingAlgorithm.removeOrder(batches, order.id, restaurantAddress));
-      assertThrows(IllegalArgumentException.class, 
-        () -> batchingAlgorithm.removeOrder(batches, order.id, restaurantAddress));
-      assertThrows(IllegalArgumentException.class, 
-        () -> batchingAlgorithm.rebatchOrder(batches, order, restaurantAddress));
+          () -> batchingAlgorithm.updateOrderInplace(batches, order.id));
+      assertDoesNotThrow(() -> batchingAlgorithm.removeOrder(batches, order.id, restaurantAddress));
       assertThrows(IllegalArgumentException.class,
-        () -> batchingAlgorithm.updateOrderState(batches, order.id, State.DELIVERED));
+          () -> batchingAlgorithm.removeOrder(batches, order.id, restaurantAddress));
+      assertThrows(IllegalArgumentException.class,
+          () -> batchingAlgorithm.rebatchOrder(batches, order, restaurantAddress));
+      assertThrows(IllegalArgumentException.class,
+          () -> batchingAlgorithm.updateOrderInplace(batches, order.id));
       checkInvariants(batches, true);
       for (TentativeBatch tb : batches) {
         assertNotEquals(0, tb.getBatch().size());

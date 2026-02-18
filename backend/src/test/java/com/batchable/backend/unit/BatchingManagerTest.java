@@ -6,7 +6,6 @@ import static org.mockito.Mockito.*;
 
 import java.lang.reflect.Field;
 import java.time.Instant;
-import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -29,7 +28,6 @@ import com.batchable.backend.service.OrderService;
 import com.batchable.backend.service.RestaurantService;
 import com.batchable.backend.service.RouteService;
 import com.batchable.backend.service.internal.RestaurantBatchingManager;
-import com.batchable.backend.service.internal.RestaurantBatchingManager.Batches;
 import com.batchable.backend.websocket.OrderWebSocketPublisher;
 
 @ExtendWith(MockitoExtension.class)
@@ -49,15 +47,11 @@ class BatchingManagerTest {
   private DriverService driverService;
 
   @Captor
-  private ArgumentCaptor<Long> orderIdCaptor;
-  @Captor
-  private ArgumentCaptor<State> stateCaptor;
+  private ArgumentCaptor<Long> longCaptor;
   @Captor
   private ArgumentCaptor<Order> orderCaptor;
   @Captor
-  private ArgumentCaptor<String> addressCaptor;
-  @Captor
-  private ArgumentCaptor<List<com.batchable.backend.service.BatchingAlgorithm.TentativeBatch>> tentativeBatchesCaptor;
+  private ArgumentCaptor<Boolean> booleanCaptor;
 
   private BatchingManager batchingManager;
 
@@ -73,13 +67,13 @@ class BatchingManagerTest {
         routeService, orderService, driverService);
   }
 
-  // Helper to create a real Order (final class with final fields, so use constructor)
+  // Helper to create a real Order
   private Order createOrder(long id, long restaurantId) {
     return new Order(id, restaurantId, "dest" + id, "[]", NOW, NOW.plusSeconds(3600),
         NOW.minusSeconds(300), State.COOKED, false, null);
   }
 
-  // Helper to extract the internal managers map
+  // Helper to extract the internal managers map via reflection
   @SuppressWarnings("unchecked")
   private Map<Long, RestaurantBatchingManager> getManagerMap() throws Exception {
     Field field = BatchingManager.class.getDeclaredField("restaurantManagers");
@@ -97,16 +91,16 @@ class BatchingManagerTest {
     return spy;
   }
 
-  // --- Manager creation tests ---
+  // --- addManager tests ---
 
   @Test
-  void getManager_createsNewManagerWhenNoneExists() throws Exception {
+  void addManager_createsManagerAndStoresIt() throws Exception {
     // Given
     Restaurant restaurant = new Restaurant(RESTAURANT_ID_1, "Test Restaurant", ADDRESS_1);
     when(restaurantService.getRestaurant(RESTAURANT_ID_1)).thenReturn(restaurant);
 
-    // When – first operation that triggers creation
-    batchingManager.addOrder(createOrder(100L, RESTAURANT_ID_1));
+    // When
+    batchingManager.addManager(RESTAURANT_ID_1);
 
     // Then
     verify(restaurantService).getRestaurant(RESTAURANT_ID_1);
@@ -116,51 +110,87 @@ class BatchingManagerTest {
   }
 
   @Test
-  void getManager_reusesExistingManager() throws Exception {
-    // Given – create first manager
-    Restaurant restaurant = new Restaurant(RESTAURANT_ID_1, "Test Restaurant", ADDRESS_1);
-    when(restaurantService.getRestaurant(RESTAURANT_ID_1)).thenReturn(restaurant);
-    batchingManager.addOrder(createOrder(100L, RESTAURANT_ID_1));
-
-    Map<Long, RestaurantBatchingManager> mapBefore = getManagerMap();
-    RestaurantBatchingManager firstManager = mapBefore.get(RESTAURANT_ID_1);
-
-    // When – second operation for same restaurant
-    batchingManager.addOrder(createOrder(101L, RESTAURANT_ID_1));
-
-    // Then – no additional getRestaurant call, same manager in map
-    verify(restaurantService, times(1)).getRestaurant(RESTAURANT_ID_1);
-    Map<Long, RestaurantBatchingManager> mapAfter = getManagerMap();
-    assertSame(firstManager, mapAfter.get(RESTAURANT_ID_1));
-  }
-
-  // --- Delegation tests with argument capturing ---
-
-  @Test
-  void addOrder_delegatesToCorrectManagerWithCorrectAddress() throws Exception {
+  void addManager_duplicate_throwsException() {
     // Given
     Restaurant restaurant = new Restaurant(RESTAURANT_ID_1, "Test Restaurant", ADDRESS_1);
     when(restaurantService.getRestaurant(RESTAURANT_ID_1)).thenReturn(restaurant);
+    batchingManager.addManager(RESTAURANT_ID_1);
+
+    // When / Then
+    assertThrows(IllegalArgumentException.class, () -> batchingManager.addManager(RESTAURANT_ID_1));
+  }
+
+  // --- updateManagerAddress tests ---
+
+  @Test
+  void updateManagerAddress_delegatesToManager() throws Exception {
+    // Given
+    Restaurant restaurant = new Restaurant(RESTAURANT_ID_1, "Test Restaurant", ADDRESS_1);
+    when(restaurantService.getRestaurant(RESTAURANT_ID_1)).thenReturn(restaurant);
+    batchingManager.addManager(RESTAURANT_ID_1);
+    RestaurantBatchingManager spy = spyOnManager(RESTAURANT_ID_1);
+
+    // When
+    batchingManager.updateManagerAddress(RESTAURANT_ID_1, "New Address");
+
+    // Then
+    verify(spy).setRestaurantAddress("New Address");
+  }
+
+  @Test
+  void updateManagerAddress_nonexistent_throwsException() {
+    assertThrows(IllegalArgumentException.class,
+        () -> batchingManager.updateManagerAddress(RESTAURANT_ID_1, "New Address"));
+  }
+
+  // --- removeManager tests ---
+
+  @Test
+  void removeManager_removesFromMap() throws Exception {
+    // Given
+    Restaurant restaurant = new Restaurant(RESTAURANT_ID_1, "Test Restaurant", ADDRESS_1);
+    when(restaurantService.getRestaurant(RESTAURANT_ID_1)).thenReturn(restaurant);
+    batchingManager.addManager(RESTAURANT_ID_1);
+    assertTrue(getManagerMap().containsKey(RESTAURANT_ID_1));
+
+    // When
+    batchingManager.removeManager(RESTAURANT_ID_1);
+
+    // Then
+    assertFalse(getManagerMap().containsKey(RESTAURANT_ID_1));
+  }
+
+  @Test
+  void removeManager_nonexistent_throwsException() {
+    assertThrows(IllegalArgumentException.class,
+        () -> batchingManager.removeManager(RESTAURANT_ID_1));
+  }
+
+  // --- Delegation tests ---
+
+  @Test
+  void addOrder_delegatesToCorrectManager() throws Exception {
+    // Given
+    Restaurant restaurant = new Restaurant(RESTAURANT_ID_1, "Test Restaurant", ADDRESS_1);
+    when(restaurantService.getRestaurant(RESTAURANT_ID_1)).thenReturn(restaurant);
+    batchingManager.addManager(RESTAURANT_ID_1);
+    RestaurantBatchingManager spy = spyOnManager(RESTAURANT_ID_1);
     Order order = createOrder(100L, RESTAURANT_ID_1);
 
     // When
     batchingManager.addOrder(order);
 
-    // Then – verify address and that the list is the manager's tentative batches
-    verify(batchingAlgorithm).addOrder(tentativeBatchesCaptor.capture(), eq(order),
-        addressCaptor.capture());
-    assertEquals(ADDRESS_1, addressCaptor.getValue());
-    // Also verify that the list belongs to the manager for restaurant 1
-    Map<Long, RestaurantBatchingManager> map = getManagerMap();
-    RestaurantBatchingManager manager = map.get(RESTAURANT_ID_1);
-    assertEquals(manager.getBatches().getTentativeBatches(), tentativeBatchesCaptor.getValue());
+    // Then
+    verify(spy).addOrder(order);
   }
 
   @Test
-  void removeOrder_delegatesToCorrectManagerWithCorrectAddress() throws Exception {
+  void removeOrder_delegatesToCorrectManager() throws Exception {
     // Given
     Restaurant restaurant = new Restaurant(RESTAURANT_ID_1, "Test Restaurant", ADDRESS_1);
     when(restaurantService.getRestaurant(RESTAURANT_ID_1)).thenReturn(restaurant);
+    batchingManager.addManager(RESTAURANT_ID_1);
+    RestaurantBatchingManager spy = spyOnManager(RESTAURANT_ID_1);
     Order order = createOrder(100L, RESTAURANT_ID_1);
     when(orderService.getOrder(100L)).thenReturn(order);
 
@@ -168,88 +198,52 @@ class BatchingManagerTest {
     batchingManager.removeOrder(100L);
 
     // Then
-    verify(batchingAlgorithm).removeOrder(tentativeBatchesCaptor.capture(), orderIdCaptor.capture(),
-        addressCaptor.capture());
-    assertEquals(100L, orderIdCaptor.getValue());
-    assertEquals(ADDRESS_1, addressCaptor.getValue());
-    Map<Long, RestaurantBatchingManager> map = getManagerMap();
-    RestaurantBatchingManager manager = map.get(RESTAURANT_ID_1);
-    assertEquals(manager.getBatches().getTentativeBatches(), tentativeBatchesCaptor.getValue());
+    verify(spy).removeOrder(100L);
   }
 
   @Test
-  void rebatchOrder_delegatesToCorrectManagerWithCorrectAddress() throws Exception {
+  void updateOrder_delegatesToCorrectManager() throws Exception {
     // Given
     Restaurant restaurant = new Restaurant(RESTAURANT_ID_1, "Test Restaurant", ADDRESS_1);
     when(restaurantService.getRestaurant(RESTAURANT_ID_1)).thenReturn(restaurant);
-    Order order = createOrder(100L, RESTAURANT_ID_1);
-
-    // When
-    batchingManager.rebatchOrder(order);
-
-    // Then
-    verify(batchingAlgorithm).rebatchOrder(tentativeBatchesCaptor.capture(), orderCaptor.capture(),
-        addressCaptor.capture());
-    assertSame(order, orderCaptor.getValue());
-    assertEquals(ADDRESS_1, addressCaptor.getValue());
-    Map<Long, RestaurantBatchingManager> map = getManagerMap();
-    RestaurantBatchingManager manager = map.get(RESTAURANT_ID_1);
-    assertEquals(manager.getBatches().getTentativeBatches(), tentativeBatchesCaptor.getValue());
-  }
-
-  @Test
-  void updateOrderState_delegatesToCorrectManager() throws Exception {
-    // Given
-    Restaurant restaurant = new Restaurant(RESTAURANT_ID_1, "Test Restaurant", ADDRESS_1);
-    when(restaurantService.getRestaurant(RESTAURANT_ID_1)).thenReturn(restaurant);
+    batchingManager.addManager(RESTAURANT_ID_1);
+    RestaurantBatchingManager spy = spyOnManager(RESTAURANT_ID_1);
     Order order = createOrder(100L, RESTAURANT_ID_1);
     when(orderService.getOrder(100L)).thenReturn(order);
 
     // When
-    batchingManager.updateOrderState(100L, State.COOKING);
+    batchingManager.updateOrder(100L, true);
 
     // Then
-    verify(batchingAlgorithm).updateOrderState(tentativeBatchesCaptor.capture(),
-        orderIdCaptor.capture(), stateCaptor.capture());
-
-    assertEquals(100L, orderIdCaptor.getValue());
-    assertEquals(State.COOKING, stateCaptor.getValue());
-
-    Map<Long, RestaurantBatchingManager> map = getManagerMap();
-    RestaurantBatchingManager manager = map.get(RESTAURANT_ID_1);
-    assertEquals(manager.getBatches().getTentativeBatches(), tentativeBatchesCaptor.getValue());
+    verify(spy).updateOrder(100L, true);
   }
 
   // --- Listener registration tests ---
 
   @Test
   void onBatchesChange_addsListenerToManager() throws Exception {
-    // Given – create manager
+    // Given
     Restaurant restaurant = new Restaurant(RESTAURANT_ID_1, "Test Restaurant", ADDRESS_1);
     when(restaurantService.getRestaurant(RESTAURANT_ID_1)).thenReturn(restaurant);
-    batchingManager.addOrder(createOrder(100L, RESTAURANT_ID_1)); // ensures manager exists
-
-    // Replace real manager with spy to verify method call
+    batchingManager.addManager(RESTAURANT_ID_1);
     RestaurantBatchingManager spy = spyOnManager(RESTAURANT_ID_1);
-
-    Consumer<Batches> listener = mock(Consumer.class);
+    Consumer<Long> listener = mock(Consumer.class);
 
     // When
     batchingManager.onBatchesChange(RESTAURANT_ID_1, listener);
 
-    // Then – spy's onBatchesChange was invoked with the listener
-    verify(spy).onBatchesChange(listener);
+    // Then
+    verify(spy).onBatchChange(listener);
   }
 
   @Test
   void onBatchBecomeActive_addsListenerToManager() throws Exception {
-    // Given – create manager
+    // Given
     Restaurant restaurant = new Restaurant(RESTAURANT_ID_1, "Test Restaurant", ADDRESS_1);
     when(restaurantService.getRestaurant(RESTAURANT_ID_1)).thenReturn(restaurant);
-    batchingManager.addOrder(createOrder(100L, RESTAURANT_ID_1)); // ensures manager exists
-
+    batchingManager.addManager(RESTAURANT_ID_1);
     RestaurantBatchingManager spy = spyOnManager(RESTAURANT_ID_1);
-    Consumer<Batch> listener = mock(Consumer.class);
+    Consumer<Long> listener = mock(Consumer.class);
 
     // When
     batchingManager.onBatchBecomeActive(RESTAURANT_ID_1, listener);
@@ -262,36 +256,32 @@ class BatchingManagerTest {
 
   @Test
   void checkExpiredBatches_callsAllManagers() throws Exception {
-    // Given – create two managers
+    // Given
     Restaurant rest1 = new Restaurant(RESTAURANT_ID_1, "Rest1", ADDRESS_1);
     Restaurant rest2 = new Restaurant(RESTAURANT_ID_2, "Rest2", ADDRESS_2);
     when(restaurantService.getRestaurant(RESTAURANT_ID_1)).thenReturn(rest1);
     when(restaurantService.getRestaurant(RESTAURANT_ID_2)).thenReturn(rest2);
+    batchingManager.addManager(RESTAURANT_ID_1);
+    batchingManager.addManager(RESTAURANT_ID_2);
 
-    batchingManager.addOrder(createOrder(100L, RESTAURANT_ID_1));
-    batchingManager.addOrder(createOrder(200L, RESTAURANT_ID_2));
-
-    // Replace with spies
     RestaurantBatchingManager spy1 = spyOnManager(RESTAURANT_ID_1);
     RestaurantBatchingManager spy2 = spyOnManager(RESTAURANT_ID_2);
 
     // When
     batchingManager.checkExpiredBatches();
 
-    // Then – each manager's checkExpiredBatches called with the correct increment
+    // Then
     verify(spy1).checkExpiredBatches(BatchingManager.UPDATE_INCREMENTS_MILLIS);
     verify(spy2).checkExpiredBatches(BatchingManager.UPDATE_INCREMENTS_MILLIS);
   }
 
   @Test
   void checkExpiredBatches_withNoManagers_doesNothing() {
-    // When – no managers have been created
+    // When – no managers have been added
     batchingManager.checkExpiredBatches();
 
-    // Then – no exception, and no interactions with mocks (besides possible internal calls)
-    // We can't verify zero calls to batchingAlgorithm because it's not used here.
-    // Just assert that the method completes.
-    assertTrue(true); // dummy assertion to indicate test passed
+    // Then – no exception, method completes
+    assertTrue(true);
   }
 
   // --- Error handling tests ---
@@ -306,48 +296,53 @@ class BatchingManagerTest {
   }
 
   @Test
-  void updateOrderState_withInvalidOrderId_throwsException() {
+  void updateOrder_withInvalidOrderId_throwsException() {
     // Given
     when(orderService.getOrder(999L)).thenThrow(new IllegalArgumentException("Order not found"));
 
     // When / Then
-    assertThrows(IllegalArgumentException.class,
-        () -> batchingManager.updateOrderState(999L, State.COOKING));
+    assertThrows(IllegalArgumentException.class, () -> batchingManager.updateOrder(999L, true));
   }
 
   @Test
-  void getManager_whenRestaurantServiceFails_throwsException() {
+  void addManager_whenRestaurantServiceFails_throwsException() {
     // Given
     when(restaurantService.getRestaurant(RESTAURANT_ID_1))
         .thenThrow(new RuntimeException("DB error"));
 
     // When / Then
-    assertThrows(RuntimeException.class,
+    assertThrows(RuntimeException.class, () -> batchingManager.addManager(RESTAURANT_ID_1));
+  }
+
+  @Test
+  void operationOnNonexistentRestaurant_throwsException() {
+    // No manager added for RESTAURANT_ID_1
+    assertThrows(IllegalArgumentException.class,
         () -> batchingManager.addOrder(createOrder(100L, RESTAURANT_ID_1)));
   }
 
-  // --- Edge case: operation on non-existent restaurant before any manager created ---
-  // This is covered by getManager_createsNewManagerWhenNoneExists, but we can add a test
-  // that verifies the address is fetched correctly even if multiple concurrent calls happen.
-  // However, concurrency is out of scope.
+  // --- Reuse of existing manager ---
 
   @Test
   void multipleOperationsOnSameRestaurant_useSameManager() throws Exception {
     // Given
     Restaurant restaurant = new Restaurant(RESTAURANT_ID_1, "Test Restaurant", ADDRESS_1);
     when(restaurantService.getRestaurant(RESTAURANT_ID_1)).thenReturn(restaurant);
+    batchingManager.addManager(RESTAURANT_ID_1);
+    Map<Long, RestaurantBatchingManager> mapBefore = getManagerMap();
+    RestaurantBatchingManager firstManager = mapBefore.get(RESTAURANT_ID_1);
 
-    // When – multiple operations
-    Order order1 = createOrder(100L, RESTAURANT_ID_1);
-    Order order2 = createOrder(101L, RESTAURANT_ID_1);
-    batchingManager.addOrder(order1);
-    batchingManager.addOrder(order2);
+    // Create order
+    Order order = createOrder(100L, RESTAURANT_ID_1);
+    when(orderService.getOrder(100L)).thenReturn(order); // <-- add this stub
 
-    // Then – restaurantService called only once
+    // When – additional operations
+    batchingManager.addOrder(order);
+    batchingManager.updateOrder(100L, false);
+
+    // Then – no additional addManager calls, same manager instance
     verify(restaurantService, times(1)).getRestaurant(RESTAURANT_ID_1);
-    Map<Long, RestaurantBatchingManager> map = getManagerMap();
-    assertEquals(1, map.size());
-    RestaurantBatchingManager manager = map.get(RESTAURANT_ID_1);
-    assertNotNull(manager);
+    Map<Long, RestaurantBatchingManager> mapAfter = getManagerMap();
+    assertSame(firstManager, mapAfter.get(RESTAURANT_ID_1));
   }
 }

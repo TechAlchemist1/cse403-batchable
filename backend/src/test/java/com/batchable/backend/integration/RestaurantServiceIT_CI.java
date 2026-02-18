@@ -1,6 +1,12 @@
 package com.batchable.backend.integration;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import com.batchable.backend.db.PostgresTestBase;
 import com.batchable.backend.db.TestDataSource;
@@ -11,6 +17,7 @@ import com.batchable.backend.db.dao.RestaurantDAO;
 import com.batchable.backend.db.models.Driver;
 import com.batchable.backend.db.models.Order;
 import com.batchable.backend.db.models.Restaurant;
+import com.batchable.backend.service.BatchingManager;
 import com.batchable.backend.service.RestaurantService;
 import java.sql.Statement;
 import java.time.Instant;
@@ -18,16 +25,18 @@ import java.util.List;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 
 /**
  * Integration tests: RestaurantService + real DAOs + real Postgres (Testcontainers).
  *
- * This proves:
- *  - your migrations ran
- *  - the DAOs talk to Postgres correctly
- *  - RestaurantService enforces its domain rules against real data
+ * This proves: - your migrations ran - the DAOs talk to Postgres correctly - RestaurantService
+ * enforces its domain rules against real data
  */
 public class RestaurantServiceIT_CI extends PostgresTestBase {
+
+  @Mock private BatchingManager mockBatchingManager;
 
   private DataSource ds;
 
@@ -35,11 +44,11 @@ public class RestaurantServiceIT_CI extends PostgresTestBase {
   private OrderDAO orderDAO;
   private DriverDAO driverDAO;
   private MenuItemDAO menuItemDAO;
-
   private RestaurantService restaurantService;
 
   @BeforeEach
   void setUp() throws Exception {
+    MockitoAnnotations.openMocks(this);
     ds = new TestDataSource(conn);
 
     restaurantDAO = new RestaurantDAO(ds);
@@ -47,22 +56,22 @@ public class RestaurantServiceIT_CI extends PostgresTestBase {
     driverDAO = new DriverDAO(ds);
     menuItemDAO = new MenuItemDAO(ds);
 
-    restaurantService = new RestaurantService(restaurantDAO, orderDAO, driverDAO, menuItemDAO);
+    restaurantService =
+        new RestaurantService(restaurantDAO, orderDAO, driverDAO, menuItemDAO, mockBatchingManager);
+
+    doNothing().when(mockBatchingManager).addManager(anyLong());
+    doNothing().when(mockBatchingManager).updateManagerAddress(anyLong(), anyString());
+    doNothing().when(mockBatchingManager).removeManager(anyLong());
 
     cleanDb();
   }
 
   private static void cleanDb() throws Exception {
     try (Statement st = conn.createStatement()) {
-      // Order of truncation matters because of FK constraints.
       st.execute("TRUNCATE TABLE \"Order\" RESTART IDENTITY CASCADE;");
       st.execute("TRUNCATE TABLE Batch RESTART IDENTITY CASCADE;");
       st.execute("TRUNCATE TABLE Driver RESTART IDENTITY CASCADE;");
-
-      // If your table is unquoted lowercase menu_item, use:
-      // st.execute("TRUNCATE TABLE menu_item RESTART IDENTITY CASCADE;");
       st.execute("TRUNCATE TABLE \"menu_item\" RESTART IDENTITY CASCADE;");
-
       st.execute("TRUNCATE TABLE Restaurant RESTART IDENTITY CASCADE;");
     }
   }
@@ -74,38 +83,19 @@ public class RestaurantServiceIT_CI extends PostgresTestBase {
   }
 
   private long createDriver(long restaurantId, boolean onShift) throws Exception {
-    // createDriver always inserts onShift value you pass into DAO;
-    // RestaurantService doesn't create drivers, so we use DAO here.
     return driverDAO.createDriver(restaurantId, "Driver1", "+1 (206) 555-1234", onShift);
   }
 
   private long createActiveOrder(long restaurantId) throws Exception {
     Instant t0 = Instant.now();
-    // ACTIVE = state != DELIVERED
-    return orderDAO.createOrder(
-        restaurantId,
-        "123 Pike St",
-        "[\"Burger\",\"Fries\"]",
-        t0,
-        null,
-        null,
-        Order.State.COOKING,
-        false,
-        null);
+    return orderDAO.createOrder(restaurantId, "123 Pike St", "[\"Burger\",\"Fries\"]", t0, null,
+        null, Order.State.COOKING, false, null);
   }
 
   private long createDeliveredOrder(long restaurantId) throws Exception {
     Instant t0 = Instant.now();
-    return orderDAO.createOrder(
-        restaurantId,
-        "123 Pike St",
-        "[\"Burger\"]",
-        t0,
-        Instant.now(),
-        Instant.now(),
-        Order.State.DELIVERED,
-        false,
-        null);
+    return orderDAO.createOrder(restaurantId, "123 Pike St", "[\"Burger\"]", t0, Instant.now(),
+        Instant.now(), Order.State.DELIVERED, false, null);
   }
 
   // ---------- tests ----------
@@ -119,32 +109,37 @@ public class RestaurantServiceIT_CI extends PostgresTestBase {
     assertEquals(id, got.id);
     assertEquals("R1", got.name);
     assertEquals("Seattle", got.location);
+    verify(mockBatchingManager).addManager(id);
   }
 
   @Test
   void createRestaurant_duplicateName_blocked() {
-    createRestaurant("R1", "Seattle");
+    long id = createRestaurant("R1", "Seattle");
+    verify(mockBatchingManager).addManager(id);
     assertThrows(IllegalStateException.class, () -> createRestaurant("R1", "Bellevue"));
+    verify(mockBatchingManager, times(1)).addManager(anyLong()); // only the first call
   }
 
   @Test
   void updateRestaurant_updatesRow_andNameUniquenessExcludingIdWorks() {
     long r1 = createRestaurant("R1", "Seattle");
     long r2 = createRestaurant("R2", "Bellevue");
+    verify(mockBatchingManager).addManager(r1);
+    verify(mockBatchingManager).addManager(r2);
 
     // trying to rename r1 to r2's name should fail
-    assertThrows(
-        IllegalStateException.class,
+    assertThrows(IllegalStateException.class,
         () -> restaurantService.updateRestaurant(r1, new Restaurant(0, "R2", "Seattle")));
+    verify(mockBatchingManager, never()).updateManagerAddress(anyLong(), anyString());
 
     // valid update
     restaurantService.updateRestaurant(r1, new Restaurant(0, "R1-new", "Seattle-new"));
+    verify(mockBatchingManager).updateManagerAddress(r1, "Seattle-new");
 
     Restaurant got = restaurantService.getRestaurant(r1);
     assertEquals("R1-new", got.name);
     assertEquals("Seattle-new", got.location);
 
-    // r2 unchanged
     Restaurant got2 = restaurantService.getRestaurant(r2);
     assertEquals("R2", got2.name);
   }
@@ -159,6 +154,7 @@ public class RestaurantServiceIT_CI extends PostgresTestBase {
     assertTrue(ex.getMessage().toLowerCase().contains("active orders"));
 
     assertTrue(restaurantDAO.restaurantExists(r1));
+    verify(mockBatchingManager, never()).removeManager(r1);
   }
 
   @Test
@@ -166,17 +162,16 @@ public class RestaurantServiceIT_CI extends PostgresTestBase {
     long r1 = createRestaurant("R1", "Seattle");
     createDeliveredOrder(r1);
 
-    // should be removable because hasActiveOrdersForRestaurant checks state <> DELIVERED
     restaurantService.removeRestaurant(r1);
-
     assertFalse(restaurantDAO.restaurantExists(r1));
+    verify(mockBatchingManager).addManager(r1);
+    verify(mockBatchingManager).removeManager(r1);
   }
 
   @Test
   void removeRestaurant_blocksWhenOnShiftDriversExist() throws Exception {
     long r1 = createRestaurant("R1", "Seattle");
 
-    // no active orders, but driver is on shift => block
     createDriver(r1, true);
 
     IllegalStateException ex =
@@ -184,17 +179,18 @@ public class RestaurantServiceIT_CI extends PostgresTestBase {
     assertTrue(ex.getMessage().toLowerCase().contains("on shift"));
 
     assertTrue(restaurantDAO.restaurantExists(r1));
+    verify(mockBatchingManager, never()).removeManager(r1);   // <-- added verification
   }
 
   @Test
   void removeRestaurant_succeedsWhenNoActiveOrdersAndNoOnShiftDrivers() throws Exception {
     long r1 = createRestaurant("R1", "Seattle");
 
-    // off-shift drivers are allowed
     createDriver(r1, false);
 
     restaurantService.removeRestaurant(r1);
     assertFalse(restaurantDAO.restaurantExists(r1));
+    verify(mockBatchingManager).removeManager(r1);            // <-- added verification
   }
 
   @Test
@@ -226,7 +222,6 @@ public class RestaurantServiceIT_CI extends PostgresTestBase {
   @Test
   void getRestaurantMenuItems_returnsItems() throws Exception {
     long r1 = createRestaurant("R1", "Seattle");
-    // RestaurantService doesn't create menu items; use DAO.
     long m1 = menuItemDAO.createMenuItem(r1, "Burger");
     long m2 = menuItemDAO.createMenuItem(r1, "Fries");
 

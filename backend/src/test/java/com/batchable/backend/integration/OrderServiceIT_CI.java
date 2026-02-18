@@ -9,6 +9,7 @@ import com.batchable.backend.db.dao.BatchDAO;
 import com.batchable.backend.db.dao.OrderDAO;
 import com.batchable.backend.db.dao.RestaurantDAO;
 import com.batchable.backend.db.models.Order;
+import com.batchable.backend.service.BatchingManager;
 import com.batchable.backend.service.OrderService;
 import com.batchable.backend.websocket.OrderWebSocketPublisher;
 import java.sql.Connection;
@@ -19,16 +20,18 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 /**
- * Integration tests for OrderService:
- * - real Postgres via Testcontainers (PostgresTestBase)
- * - real DAOs
- * - real OrderWebSocketPublisher, but with mocked SimpMessagingTemplate so we can verify publishes
+ * Integration tests for OrderService: - real Postgres via Testcontainers (PostgresTestBase) - real
+ * DAOs - real OrderWebSocketPublisher, but with mocked SimpMessagingTemplate so we can verify
+ * publishes
  */
 public class OrderServiceIT_CI extends PostgresTestBase {
-
+  @Mock
+  private BatchingManager mockBatchingManager;
   private Connection c;
 
   private RestaurantDAO restaurantDAO;
@@ -36,14 +39,15 @@ public class OrderServiceIT_CI extends PostgresTestBase {
   private BatchDAO batchDAO;
 
   private SimpMessagingTemplate messagingTemplate; // mock
-  private OrderWebSocketPublisher publisher;       // real
-  private OrderService service;                    // real
+  private OrderWebSocketPublisher publisher; // real
+  private OrderService service; // real
 
   private TestDataSource ds;
 
   @BeforeEach
   void setUp() throws Exception {
     // PostgresTestBase provides this per-test
+    MockitoAnnotations.openMocks(this);
     c = conn;
     assertNotNull(c, "PostgresTestBase.conn is null — did @BeforeAll run?");
 
@@ -57,7 +61,7 @@ public class OrderServiceIT_CI extends PostgresTestBase {
     messagingTemplate = mock(SimpMessagingTemplate.class);
     publisher = new OrderWebSocketPublisher(messagingTemplate);
 
-    service = new OrderService(orderDAO, batchDAO, publisher);
+    service = new OrderService(orderDAO, batchDAO, publisher, mockBatchingManager);
 
     // Optional: keep each test isolated if you want.
     // If you already clean tables elsewhere, remove this.
@@ -85,23 +89,14 @@ public class OrderServiceIT_CI extends PostgresTestBase {
   }
 
   private long createOrderRow(long restaurantId, Order.State state) throws SQLException {
-    return orderDAO.createOrder(
-        restaurantId,
-        "123 Pike St",
-        "[\"Burger\"]",
-        Instant.now(),
-        null,
-        null,
-        state,
-        false,
-        null);
+    return orderDAO.createOrder(restaurantId, "123 Pike St", "[\"Burger\"]", Instant.now(), null,
+        null, state, false, null);
   }
 
   private long createDriverRow(long restaurantId) throws SQLException {
     // Match your DriverDAO SQL: INSERT INTO Driver(...)
-    final String sql =
-        "INSERT INTO Driver(restaurant_id, name, phone_number, on_shift) " +
-        "VALUES (?, ?, ?, ?) RETURNING id;";
+    final String sql = "INSERT INTO Driver(restaurant_id, name, phone_number, on_shift) "
+        + "VALUES (?, ?, ?, ?) RETURNING id;";
     try (PreparedStatement ps = c.prepareStatement(sql)) {
       ps.setLong(1, restaurantId);
       ps.setString(2, "Driver One");
@@ -117,8 +112,8 @@ public class OrderServiceIT_CI extends PostgresTestBase {
   private long createBatchRow(long driverId) throws SQLException {
     // Match your BatchDAO SQL: INSERT INTO Batch(...)
     final String sql =
-        "INSERT INTO Batch(driver_id, route, dispatch_time, expected_completion_time) " +
-        "VALUES (?, ?, ?, ?) RETURNING id;";
+        "INSERT INTO Batch(driver_id, route, dispatch_time, expected_completion_time) "
+            + "VALUES (?, ?, ?, ?) RETURNING id;";
     try (PreparedStatement ps = c.prepareStatement(sql)) {
       ps.setLong(1, driverId);
       ps.setString(2, "");
@@ -142,18 +137,8 @@ public class OrderServiceIT_CI extends PostgresTestBase {
   void createOrder_happyPath_persists_andPublishes() throws Exception {
     long rid = createRestaurant("R1");
 
-    Order o =
-        new Order(
-            0L,
-            rid,
-            "123 Pike St",
-            "[\"Burger\",\"Fries\"]",
-            Instant.now(),
-            null,
-            null,
-            Order.State.COOKING,
-            false,
-            null);
+    Order o = new Order(0L, rid, "123 Pike St", "[\"Burger\",\"Fries\"]", Instant.now(), null, null,
+        Order.State.COOKING, false, null);
 
     long id = service.createOrder(o);
     assertTrue(id > 0);
@@ -164,7 +149,7 @@ public class OrderServiceIT_CI extends PostgresTestBase {
     assertEquals("[\"Burger\",\"Fries\"]", got.itemNamesJson);
     assertEquals(Order.State.COOKING, got.state);
 
-    verify(messagingTemplate, times(1)).convertAndSend("/topic/orders", "");
+    verify(messagingTemplate, times(1)).convertAndSend("/topic/orders/" + rid, "");
   }
 
   @Test
@@ -172,18 +157,18 @@ public class OrderServiceIT_CI extends PostgresTestBase {
     long rid = createRestaurant("R1");
     long oid = createOrderRow(rid, Order.State.COOKING);
 
-    service.advanceOrderState(oid);
+    service.advanceOrderState(oid, true);
     assertEquals(Order.State.COOKED, service.getOrder(oid).state);
 
-    service.advanceOrderState(oid);
+    service.advanceOrderState(oid, true);
     assertEquals(Order.State.DRIVING, service.getOrder(oid).state);
 
-    service.advanceOrderState(oid);
+    service.advanceOrderState(oid, true);
     Order delivered = service.getOrder(oid);
     assertEquals(Order.State.DELIVERED, delivered.state);
     assertNotNull(delivered.deliveryTime);
 
-    verify(messagingTemplate, times(3)).convertAndSend("/topic/orders", "");
+    verify(messagingTemplate, times(3)).convertAndSend("/topic/orders/" + rid, "");
   }
 
   @Test
@@ -192,10 +177,10 @@ public class OrderServiceIT_CI extends PostgresTestBase {
     long oid = createOrderRow(rid, Order.State.COOKING);
 
     Instant cooked = service.getOrder(oid).initialTime.plusSeconds(120);
-    service.updateOrderCookedTime(oid, cooked);
+    service.updateOrderCookedTime(oid, cooked, true);
 
     assertEquals(cooked, service.getOrder(oid).cookedTime);
-    verify(messagingTemplate, times(1)).convertAndSend("/topic/orders", "");
+    verify(messagingTemplate, times(1)).convertAndSend("/topic/orders/" + rid, "");
   }
 
   @Test
@@ -203,7 +188,7 @@ public class OrderServiceIT_CI extends PostgresTestBase {
     long rid = createRestaurant("R1");
     long oid = createOrderRow(rid, Order.State.DRIVING);
 
-    service.remakeOrder(oid);
+    service.remakeOrder(oid, true);
 
     Order got = service.getOrder(oid);
     assertEquals(Order.State.COOKING, got.state);
@@ -212,7 +197,7 @@ public class OrderServiceIT_CI extends PostgresTestBase {
     assertNull(got.deliveryTime);
     assertNull(got.batchId);
 
-    verify(messagingTemplate, times(1)).convertAndSend("/topic/orders", "");
+    verify(messagingTemplate, times(1)).convertAndSend("/topic/orders/" + rid, "");
   }
 
   @Test
@@ -223,7 +208,7 @@ public class OrderServiceIT_CI extends PostgresTestBase {
     service.removeOrder(oid);
 
     assertThrows(IllegalArgumentException.class, () -> service.getOrder(oid));
-    verify(messagingTemplate, times(1)).convertAndSend("/topic/orders", "");
+    verify(messagingTemplate, times(1)).convertAndSend("/topic/orders/" + rid, "");
   }
 
   @Test
@@ -240,6 +225,6 @@ public class OrderServiceIT_CI extends PostgresTestBase {
     assertNotNull(got.batchId);
     assertEquals(batchId, got.batchId.longValue());
 
-    verify(messagingTemplate, times(1)).convertAndSend("/topic/orders", "");
+    verify(messagingTemplate, times(1)).convertAndSend("/topic/orders/" + rid, "");
   }
 }

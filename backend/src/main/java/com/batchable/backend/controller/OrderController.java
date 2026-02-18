@@ -49,7 +49,7 @@ public class OrderController {
   @PutMapping("/{orderId}/advance")
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void advanceOrderState(@PathVariable long orderId) {
-    orderService.advanceOrderState(orderId);
+    orderService.advanceOrderState(orderId, false);
   }
 
   /**
@@ -63,7 +63,7 @@ public class OrderController {
   @PutMapping("/{orderId}/cookedTime")
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void updateOrderCookedTime(@PathVariable long orderId, @RequestBody Instant cookedTime) {
-    orderService.updateOrderCookedTime(orderId, cookedTime);
+    orderService.updateOrderCookedTime(orderId, cookedTime, false);
   }
 
   /**
@@ -76,7 +76,7 @@ public class OrderController {
   @PutMapping("/{orderId}/remake")
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void remakeOrder(@PathVariable long orderId) {
-    orderService.remakeOrder(orderId);
+    orderService.remakeOrder(orderId, false);
   }
 
   /**

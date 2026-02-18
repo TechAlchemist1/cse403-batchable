@@ -156,25 +156,19 @@ public class BatchingAlgorithm {
   }
 
   /**
-   * Updates the state of an existing order within the tentative batches.
+   * Updates an existing order within the tentative batches.
    *
    * @param batches the list of tentative batches for a restaurant
    * @param orderId the id of the order to update
-   * @param newState the new state to assign to the order
    *
    * @throws IllegalArgumentException if the order id is not found
    */
-  public void updateOrderState(final List<TentativeBatch> batches, final long orderId,
-      final State newState) {
+  public void updateOrderInplace(final List<TentativeBatch> batches, final long orderId) {
     int[] inds = findOrder(batches, orderId, true);
     int i = inds[0];
     int j = inds[1];
     List<Order> batch = batches.get(i).batch;
-    Order oldOrder = batch.get(j);
-    Order newOrder = new Order(oldOrder.id, oldOrder.restaurantId, oldOrder.destination,
-        oldOrder.itemNamesJson, oldOrder.initialTime, oldOrder.deliveryTime, oldOrder.cookedTime,
-        newState, oldOrder.highPriority, oldOrder.batchId);
-    batch.set(j, newOrder);
+    batch.set(j, orderService.getOrder(orderId));
   }
 
   /**
@@ -245,7 +239,7 @@ public class BatchingAlgorithm {
           "This method must only be called with a lastAllowedCookedTime earlier than the order's cookedTime");
     }
     Duration paddedDifference = difference.plus(Duration.ofSeconds(PADDING_SECONDS));
-    orderService.updateOrderDeliveryTime(order.id, order.deliveryTime.plus(paddedDifference));
+    orderService.updateOrderDeliveryTime(order.id, order.deliveryTime.plus(paddedDifference), true);
     Order updatedOrder = orderService.getOrder(order.id);
     return updatedOrder;
   }

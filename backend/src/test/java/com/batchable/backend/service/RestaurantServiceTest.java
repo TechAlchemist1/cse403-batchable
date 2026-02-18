@@ -38,12 +38,13 @@ public class RestaurantServiceTest {
   @Mock private OrderDAO orderDAO;
   @Mock private DriverDAO driverDAO;
   @Mock private MenuItemDAO menuItemDAO;
+  @Mock private BatchingManager mockBatchingManager;
 
   private RestaurantService service;
 
   @BeforeEach
   void setUp() {
-    service = new RestaurantService(restaurantDAO, orderDAO, driverDAO, menuItemDAO);
+    service = new RestaurantService(restaurantDAO, orderDAO, driverDAO, menuItemDAO, mockBatchingManager);
   }
 
   // ---- helpers ----
