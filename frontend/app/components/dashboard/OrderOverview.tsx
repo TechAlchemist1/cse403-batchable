@@ -20,6 +20,7 @@ export default function OrderList() {
   const loader = useLoader(async () => {
     if (!restaurant) return null;
     const orders = await restaurantApi.getOrders(restaurant);
+    if (!orders) throw new Error('Failed to load orders');
     return orders;
   }, [restaurant]);
 

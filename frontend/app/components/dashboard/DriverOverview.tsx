@@ -11,7 +11,7 @@ export default function DriverOverview() {
   const loader = useLoader(async () => {
     if (!restaurant) return null;
     const drivers = await restaurantApi.getDrivers(restaurant);
-    if (!drivers) return null;
+    if (!drivers) throw new Error('Failed to load drivers');
     return drivers.filter(driver => driver.onShift);
   }, [restaurant]);
 
