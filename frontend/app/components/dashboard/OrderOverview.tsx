@@ -21,10 +21,6 @@ export default function OrderList() {
     if (!restaurant) return null;
     const orders = await restaurantApi.getOrders(restaurant);
     return orders;
-  });
-
-  useEffect(() => {
-    loader.reload();
   }, [restaurant]);
 
   return (

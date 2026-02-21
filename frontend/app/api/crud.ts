@@ -7,13 +7,20 @@ import * as json from '~/domain/json';
  * Thanks to MSW, this works both in production and development!
  */
 export class CrudApi<T extends DomainObject> {
+  private static DELAY = 300;
+
   constructor(
     protected resource: Resource,
     protected parserPair: json.JSONParserPair<T>,
   ) {}
 
+  delay(): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, CrudApi.DELAY));
+  }
+
   async create(domainObject: T) {
     try {
+      await this.delay();
       const id = await fetchJSON(
         'POST',
         this.resource,
@@ -28,6 +35,7 @@ export class CrudApi<T extends DomainObject> {
 
   async read({id}: T['id']) {
     try {
+      await this.delay();
       return this.parserPair.parse(
         await fetchJSON('GET', `${this.resource}/${id}`),
       );
@@ -39,6 +47,7 @@ export class CrudApi<T extends DomainObject> {
 
   async exists({id}: T['id']) {
     try {
+      await this.delay();
       await fetchJSON('GET', `${this.resource}/${id}`);
       return true;
     } catch {
@@ -48,6 +57,7 @@ export class CrudApi<T extends DomainObject> {
 
   async update(domainObject: T) {
     try {
+      await this.delay();
       await fetchEndpoint(
         'PUT',
         `${this.resource}/${domainObject.id.id}`,
@@ -65,6 +75,7 @@ export class CrudApi<T extends DomainObject> {
 
   async delete({id}: T['id']) {
     try {
+      await this.delay();
       await fetchEndpoint('DELETE', `${this.resource}/${id}`);
       return true;
     } catch (err) {

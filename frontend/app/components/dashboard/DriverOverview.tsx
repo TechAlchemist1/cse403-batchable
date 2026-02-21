@@ -13,7 +13,7 @@ export default function DriverOverview() {
     const drivers = await restaurantApi.getDrivers(restaurant);
     if (!drivers) return null;
     return drivers.filter(driver => driver.onShift);
-  });
+  }, [restaurant]);
 
   return (
     <OverviewSection

@@ -1,7 +1,7 @@
 // import {useAuth0} from '@auth0/auth0-react';
 // import LoginButton from '../components/LoginButton';
 import OrderOverview from '../components/dashboard/OrderOverview';
-// import DriverOverview from '../components/dashboard/DriverOverview';
+import DriverOverview from '../components/dashboard/DriverOverview';
 import AddOrderModal from '../components/dashboard/AddOrderModal';
 import Button from '~/components/Button';
 import {useModal} from '~/components/Modal';
@@ -54,7 +54,7 @@ function Home() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <OrderOverview />
-          {/* <DriverOverview /> */}
+          <DriverOverview />
         </div>
 
         <AddOrderModal modal={addOrderModal} />
