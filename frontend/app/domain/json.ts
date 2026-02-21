@@ -11,17 +11,20 @@ import type {
   DomainObject,
 } from './objects';
 
+type StringEnum<T> = Lowercase<string> & (string extends T ? never : T);
+
 type JSONDomainField<T> = T extends
   | Date
   | WorldLocation
   | Polyline
   | PhoneNumber
   | unknown[]
-  | string
   ? string
   : T extends Id<infer I>
     ? Id<I>['id']
-    : T;
+    : T extends StringEnum<T>
+      ? Uppercase<T>
+      : T;
 
 /**
  * For a given domain object type, this represents the post-parsing JSON representation.
@@ -109,13 +112,12 @@ const parsePhoneNumber: JSONFieldParserPair<PhoneNumber> = {
   },
 };
 
-// TODO: this shouldn't be the case
-const parseUppercase = <T extends string>(): JSONFieldParserPair<T> => ({
-  parse(upper: string) {
-    return upper.toLowerCase() as T;
+const parseEnum = <T extends string>(): JSONFieldParserPair<StringEnum<T>> => ({
+  parse(upper) {
+    return upper.toLowerCase() as StringEnum<T>; // definitely safe, unfortunately unavoidable
   },
-  unparse(lower: T) {
-    return lower.toUpperCase() as JSONDomainField<T>;
+  unparse(lower) {
+    return lower.toUpperCase() as JSONDomainField<StringEnum<T>>;
   },
 });
 
@@ -190,7 +192,7 @@ export const order = createDomainObjectParserPair<Order>({
   initialTime: parseDate,
   deliveryTime: parseDate,
   cookedTime: parseDate,
-  state: parseUppercase<Order['state']>(),
+  state: parseEnum<Order['state']>(),
   highPriority: identity,
   currentBatch: parseNullable(parseId('Batch')),
 });
