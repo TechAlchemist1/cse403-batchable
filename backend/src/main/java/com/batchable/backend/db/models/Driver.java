@@ -1,6 +1,5 @@
 package com.batchable.backend.db.models;
 
-import java.time.Instant;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 

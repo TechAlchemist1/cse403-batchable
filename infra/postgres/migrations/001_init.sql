@@ -103,7 +103,8 @@ CREATE TABLE Menu_Item (
   id SERIAL PRIMARY KEY,
   restaurant_id INTEGER NOT NULL,
   name VARCHAR(100) NOT NULL,
-  FOREIGN KEY (restaurant_id) REFERENCES Restaurant(id)
+  FOREIGN KEY (restaurant_id) REFERENCES Restaurant(id),
+  UNIQUE (restaurant_id, name)
 );
 
 INSERT INTO Restaurant (id, name, location)
