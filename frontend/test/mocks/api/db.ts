@@ -1,9 +1,21 @@
 import * as json from '~/domain/json';
 import type {DomainObject, Id, IdKey} from '~/domain/objects';
 
+/**
+ * Represents a database table of domain objects.
+ * A constraint can be enforced on the state of the rows, with the invariant that it must consider the empty table valid.
+ */
 class Table<T extends DomainObject> {
   private rows: T[] = [];
   private nextId = 1;
+
+  constructor(private isValid: (rows: T[]) => boolean) {}
+
+  private tryChange(newRows: T[]) {
+    if (!this.isValid(newRows)) return false;
+    this.rows = newRows;
+    return true;
+  }
 
   clear() {
     this.nextId = 1;
@@ -21,32 +33,53 @@ class Table<T extends DomainObject> {
   update(object: T) {
     const index = this.rows.findIndex(row => row.id.id === object.id.id);
     if (index === -1) return false;
-    this.rows[index] = object;
-    return true;
+    const possible = [...this.rows];
+    possible[index] = object;
+    return this.tryChange(possible);
   }
 
   delete({id}: T['id']) {
     const index = this.rows.findIndex(row => row.id.id === id);
-    if (index >= 0) {
-      this.rows.splice(index, 1);
-      return true;
-    }
-    return false;
+    const possible = [...this.rows];
+    if (index === -1) return false;
+    possible.splice(index, 1);
+    return this.tryChange(possible);
   }
 
   insert(domainObject: T) {
-    const id = this.nextId++;
-    domainObject.id.id = id;
-    this.rows.push(domainObject);
-    return id;
+    domainObject = {
+      ...domainObject,
+      id: {
+        type: domainObject.id.type,
+        id: this.nextId++,
+      },
+    };
+    const possible = [...this.rows, domainObject];
+    return this.tryChange(possible) ? domainObject.id : null;
   }
 }
 
+/**
+ * Represents a database table of JSON representations of domain objects.
+ * Very similar to table, but a JSONParserPair converts to/from JSON along the interface surface.
+ */
 export class JSONTable<T extends DomainObject> {
   private table: Table<T>;
 
-  constructor(private parserPair: json.JSONParserPair<T>) {
-    this.table = new Table();
+  constructor(
+    private parserPair: json.JSONParserPair<T>,
+    unique?: Array<keyof T>,
+  ) {
+    this.table = new Table(rows => {
+      if (unique) {
+        const keys = new Set(
+          rows.map(row => JSON.stringify(unique.map(key => row[key]))),
+        );
+        return keys.size === rows.length;
+      }
+
+      return true;
+    });
   }
 
   clear() {
@@ -78,6 +111,7 @@ export class JSONTable<T extends DomainObject> {
   }
 
   insert(domainObject: json.JSONDomainObject<T>) {
-    return this.table.insert(this.parserPair.parse(domainObject));
+    const id = this.table.insert(this.parserPair.parse(domainObject));
+    return id ? this.parserPair.field('id').unparse(id) : null;
   }
 }

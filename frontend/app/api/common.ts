@@ -8,13 +8,15 @@ export async function fetchEndpoint(
   path: Resource,
   body?: unknown,
 ) {
-  return await apiFetch(path, {
+  const response = await apiFetch(path, {
     body: body !== undefined ? JSON.stringify(body) : undefined,
     method,
     headers: {
       'Content-Type': 'application/json',
     },
   });
+  if (!response.ok) throw new Error(response.statusText);
+  return response;
 }
 
 export async function fetchJSON(

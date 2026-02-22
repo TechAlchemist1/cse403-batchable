@@ -9,7 +9,7 @@ export const db = {
   restaurants: new JSONTable(json.restaurant),
   orders: new JSONTable(json.order),
   drivers: new JSONTable(json.driver),
-  menuItems: new JSONTable(json.menuItem),
+  menuItems: new JSONTable(json.menuItem, ['restaurant', 'name']),
   batches: new JSONTable(json.batch),
 };
 
@@ -33,6 +33,10 @@ export function noContent() {
   return HttpResponse.json(undefined, {status: StatusCodes.NO_CONTENT});
 }
 
+export function badRequest() {
+  return HttpResponse.json(undefined, {status: StatusCodes.BAD_REQUEST});
+}
+
 export function asId<T extends DomainObject>(
   id: string | readonly string[] | undefined,
 ) {
@@ -54,13 +58,12 @@ export function makeCrudHandlers<T extends DomainObject>(
       const id = table.insert(
         (await req.request.json()) as json.JSONDomainObject<T>,
       );
+      if (id === null) return badRequest();
       return HttpResponse.json(id, {status: StatusCodes.CREATED});
     }),
     read: http.get(endpoint(`${resource}/:id`), async req => {
       const row = table.get(asId<T>(req.params.id));
-      if (!row) {
-        return notFound(resource);
-      }
+      if (!row) return notFound(resource);
       return HttpResponse.json(row);
     }),
     update: http.put(endpoint(`${resource}/:id`), async req => {

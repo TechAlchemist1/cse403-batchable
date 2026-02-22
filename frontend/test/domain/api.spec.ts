@@ -133,6 +133,14 @@ function getFakeMenuItem(restaurant: Restaurant['id']): MenuItem {
   };
 }
 
+function getFakeMenuItem2(restaurant: Restaurant['id']): MenuItem {
+  return {
+    id: fakeId('MenuItem'),
+    restaurant,
+    name: 'Shrimp Fried Rice',
+  };
+}
+
 describe('/menu endpoint', () => {
   it('can create and read back a menu item', async () => {
     const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());
@@ -142,6 +150,36 @@ describe('/menu endpoint', () => {
   it('is gone after it is deleted', async () => {
     const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());
     await expectMissingDeleted(menuApi, getFakeMenuItem(restaurant));
+  });
+
+  it('is changed after it is updated', async () => {
+    const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());
+    await expectUpdatedChanged(
+      menuApi,
+      getFakeMenuItem(restaurant),
+      getFakeMenuItem2(restaurant),
+    );
+  });
+
+  it('fails to create duplicate', async () => {
+    const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());
+    await checkedCreate(menuApi, getFakeMenuItem(restaurant));
+    expect(await menuApi.create(getFakeMenuItem(restaurant))).toBe(null);
+  });
+
+  it('fails to update to duplicate', async () => {
+    const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());
+    await checkedCreate(menuApi, getFakeMenuItem(restaurant));
+    const itemId = await checkedCreate(menuApi, getFakeMenuItem2(restaurant));
+    const item = await menuApi.read(itemId);
+    if (item === null) {
+      expect.fail('menu item must not be null');
+    }
+    const updated = await menuApi.update({
+      ...item,
+      name: getFakeMenuItem(restaurant).name,
+    });
+    expect(updated).toBe(false);
   });
 });
 
