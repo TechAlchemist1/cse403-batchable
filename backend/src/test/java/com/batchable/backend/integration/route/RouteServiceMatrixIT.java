@@ -46,7 +46,6 @@ class RouteServiceDistanceMatrixIT {
     // Basic sanity checks
     assertNotNull(response, "Response should not be null");
     int[][] matrix = response.getMatrix();
-    System.out.println("matrix: " + Arrays.deepToString(matrix));
     assertNotNull(matrix, "Matrix should not be null");
     assertEquals(origins.size(), matrix.length, "Matrix row count should match origins");
 

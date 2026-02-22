@@ -63,7 +63,7 @@ export function makeCrudHandlers<T extends DomainObject>(
       }
       return HttpResponse.json(row);
     }),
-    update: http.put(endpoint(`${resource}/:id`), async req => {
+    update: http.put(endpoint(resource), async req => {
       if (
         !table.update((await req.request.json()) as json.JSONDomainObject<T>)
       ) {

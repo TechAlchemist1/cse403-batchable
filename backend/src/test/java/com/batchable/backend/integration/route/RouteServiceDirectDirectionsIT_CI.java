@@ -1,11 +1,11 @@
 package com.batchable.backend.integration.route;
 
+import com.batchable.backend.exception.InvalidRouteException;
 import com.batchable.backend.model.dto.DirectDirectionsResponse;
 import com.batchable.backend.service.RouteService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -33,15 +33,28 @@ class RouteServiceDirectDirectionsIT_CI {
    */
   @Test
   void testGetDirectDirections() {
-    String from = "Olympia, WA";
-    String to = "Bellingham, WA";
-
     // Call the service (actual Google API call)
-    DirectDirectionsResponse resp = routeService.getDirectDirections(from, to);
+    assertDoesNotThrow(() -> {
+      String from = "Olympia, WA";
+      String to = "Bellingham, WA";
+      DirectDirectionsResponse resp = routeService.getDirectDirections(from, to);
+      // Assertions for required fields
+      assertNotNull(resp, "Response should not be null");
+      assertTrue(resp.getDistanceMeters() >= 0, "Distance should be nonnegative");
+      assertTrue(resp.getDurationSeconds() >= 0, "Duration should be nonnegative");
+    });
 
-    // Assertions for required fields
-    assertNotNull(resp, "Response should not be null");
-    assertTrue(resp.getDistanceMeters() >= 0, "Distance should be nonnegative");
-    assertTrue(resp.getDurationSeconds() >= 0, "Duration should be nonnegative");
+    
+    assertThrows(InvalidRouteException.class, () -> {
+      String from = "notaplace"; // giberrish
+      String to = "Bellingham, WA";
+      routeService.getDirectDirections(from, to);
+    });
+
+    assertThrows(InvalidRouteException.class, () -> {
+      String from = "Olympia, WA"; 
+      String to = "afjlkasf"; // giberrish
+      routeService.getDirectDirections(from, to);
+    });  
   }
 }

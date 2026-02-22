@@ -81,21 +81,90 @@ public class MenuService {
         throw new IllegalArgumentException(
             "Restaurant does not exist: " + menuItem.restaurantId);
       }
-
-      // Ensure no duplicate menu item name for same restaurant
-      if (menuItemDAO.menuItemExistsForRestaurantByName(
-          menuItem.restaurantId, menuItem.name)) {
-        throw new IllegalStateException(
-            "Duplicate menu item for restaurantId=" +
-                menuItem.restaurantId +
-                " name=" +
-                menuItem.name);
-      }
-
+      
       return menuItemDAO.createMenuItem(menuItem.restaurantId, menuItem.name);
 
     } catch (SQLException e) {
       throw new RuntimeException("Failed to create menu item", e);
+    }
+  }
+
+
+  /**
+   * Retrieves the menu item by ID.
+   *
+   * Errors:
+   *  - IllegalArgumentException if menuItemId does not exist
+   */
+  public MenuItem getMenuItem(long menuItemId) {
+    if (menuItemId <= 0) {
+      throw new IllegalArgumentException("menuItemId must be positive");
+    }
+
+    try {
+      return menuItemDAO.getMenuItem(menuItemId)
+          .orElseThrow(() -> new IllegalArgumentException("Menu item not found: " + menuItemId));
+    } catch (SQLException e) {
+      throw new RuntimeException("Failed to retrieve menuItem", e);
+    }
+  }
+
+  /**
+   * Updates an existing menu item for a restaurant.
+   *
+   * Responsibilities:
+   *  - Validate required fields
+   *  - Ensure the referenced restaurant exists
+   *  - Ensure the menu item exists for the restaurant
+   *  - Persist the menu item
+   *
+   * Domain Invariants:
+   *  - Price must be non-negative
+   *  - Name must be non-empty
+   *  - Menu item must belong to exactly one restaurant
+   *
+   * Errors:
+   *  - IllegalArgumentException if:
+   *      • Required fields are missing
+   *      • Price is negative
+   *      • Restaurant does not exist
+   *      • Restaurant id does not match the old restaurant id
+   *  - IllegalStateException if:
+   *      • Menu item does not exist for the restaurant
+   *  - RuntimeException if persistence fails
+   */
+  public void updateMenuItem(MenuItem menuItem) {
+    if (menuItem == null) {
+      throw new IllegalArgumentException("menuItem is required");
+    }
+
+    if (menuItem.id <= 0) {
+      throw new IllegalArgumentException("menuItem id must be positive");
+    }
+
+    if (menuItem.restaurantId <= 0) {
+      throw new IllegalArgumentException("restaurant id must be positive");
+    }
+
+    if (menuItem.name == null || menuItem.name.trim().isEmpty()) {
+      throw new IllegalArgumentException("name must be non-empty");
+    }
+
+    MenuItem old = getMenuItem(menuItem.id);
+    if (menuItem.restaurantId != old.restaurantId) {
+      throw new IllegalArgumentException("menuItem restaurant id must match the old restaurant id");
+    }
+
+    try {
+      // Ensure restaurant exists
+      if (!restaurantDAO.restaurantExists(menuItem.restaurantId)) {
+        throw new IllegalArgumentException(
+            "Restaurant does not exist: " + menuItem.restaurantId);
+      }
+      menuItemDAO.updateMenuItem(menuItem.id, menuItem.restaurantId, menuItem.name);
+
+    } catch (SQLException e) {
+      throw new RuntimeException("Failed to update menu item", e);
     }
   }
 

@@ -36,19 +36,18 @@ public class DriverService {
     if (driver.id > 0) throw new IllegalStateException("driver.id must be <= 0 (db-generated)");
 
     try {
-      // Invariant: new driver starts off-shift
       return driverDAO.createDriver(
           driver.restaurantId,
           driver.name,
           driver.phoneNumber,
-          /*onShift=*/ false);
+          driver.onShift);
 
     } catch (SQLException e) {
       throw new RuntimeException("Failed to create driver", e);
     }
   }
 
-  /** Updates mutable driver details (NOT id, NOT restaurant_id, NOT on_shift). */
+  /** Updates mutable driver details (NOT id, NOT restaurant_id). */
   public void updateDriver(Driver driver) {
     if (driver == null) throw new IllegalArgumentException("driver is required");
     if (driver.id <= 0) throw new IllegalArgumentException("driverId must be positive");
@@ -62,6 +61,7 @@ public class DriverService {
 
       boolean ok = driverDAO.updateDriver(driver.id, driver.name, driver.phoneNumber);
       if (!ok) throw new IllegalArgumentException("Driver not found: " + driver.id);
+      updateDriverOnShift(driver.id, driver.onShift);
     } catch (SQLException e) {
       throw new RuntimeException("Failed to update driver " + driver.id, e);
     }

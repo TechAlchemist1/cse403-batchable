@@ -24,6 +24,7 @@ import com.batchable.backend.db.models.Batch;
 import com.batchable.backend.db.models.Driver;
 import com.batchable.backend.db.models.Order;
 import com.batchable.backend.db.models.Order.State;
+import com.batchable.backend.exception.InvalidRouteException;
 import com.batchable.backend.model.dto.RouteDirectionsResponse;
 import com.batchable.backend.service.BatchingAlgorithm;
 import com.batchable.backend.service.BatchingAlgorithm.TentativeBatch;
@@ -331,7 +332,7 @@ class RestaurantBatchingManagerTest {
 
   /** Verifies that getReadyDrivers returns fewer if not enough drivers are available. */
   @Test
-  void getReadyDrivers_returnsFewerIfNotEnoughAvailable() {
+  void getReadyDrivers_returnsFewerIfNotEnoughAvailable() throws InvalidRouteException {
     Batches emptyBatches = new Batches();
     RestaurantBatchingManager mgr =
         new RestaurantBatchingManager(RESTAURANT_ID, ADDRESS, publisher, batchingAlgorithm,
@@ -366,7 +367,7 @@ class RestaurantBatchingManagerTest {
 
   /** Moves an expired batch with all cooked orders to ready, then assigns it to a driver. */
   @Test
-  void checkExpiredBatches_movesExpiredCookedBatchToReady() {
+  void checkExpiredBatches_movesExpiredCookedBatchToReady() throws InvalidRouteException {
     Instant now = Instant.now();
     Instant expiration = now.minusSeconds(10);
     Order order1 = createOrder(1L, State.COOKED, now.minus(Duration.ofMinutes(5)),
@@ -541,7 +542,7 @@ class RestaurantBatchingManagerTest {
 
   /** Assigns ready batches to available drivers, activates them, and notifies listeners. */
   @Test
-  void assignReadyBatchesToDrivers_assignsToAvailableDrivers() {
+  void assignReadyBatchesToDrivers_assignsToAvailableDrivers() throws InvalidRouteException {
     Instant now = Instant.now();
     Order o1 = createOrder(1L, State.COOKED, now, now.plus(Duration.ofMinutes(10)));
     Order o2 = createOrder(2L, State.COOKED, now, now.plus(Duration.ofMinutes(12)));
@@ -667,7 +668,7 @@ class RestaurantBatchingManagerTest {
 
   /** Batch become‑active listener is invoked when a batch is activated. */
   @Test
-  void onBatchBecomeActive_listenerInvokedWhenBatchActivated() {
+  void onBatchBecomeActive_listenerInvokedWhenBatchActivated() throws InvalidRouteException {
     Instant now = Instant.now();
     Order o = createOrder(1L, State.COOKED, now, now.plus(Duration.ofMinutes(5)));
 
@@ -774,7 +775,7 @@ class RestaurantBatchingManagerTest {
 
   /** Full end‑to‑end test with multiple batches, expired and future, and driver assignment. */
   @Test
-  void checkExpiredBatches_fullFlow() {
+  void checkExpiredBatches_fullFlow() throws InvalidRouteException {
     Instant now = Instant.now();
 
     Order cooked1 = createOrder(1L, State.COOKED, now.minus(Duration.ofMinutes(5)),

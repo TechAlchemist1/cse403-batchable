@@ -1,4 +1,4 @@
-package com.batchable.backend.service;
+package com.batchable.backend.unit.service;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -11,6 +11,8 @@ import com.batchable.backend.db.models.Driver;
 import com.batchable.backend.db.models.MenuItem;
 import com.batchable.backend.db.models.Order;
 import com.batchable.backend.db.models.Restaurant;
+import com.batchable.backend.service.BatchingManager;
+import com.batchable.backend.service.RestaurantService;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
@@ -138,14 +140,14 @@ public class RestaurantServiceTest {
   @Test
   void updateRestaurant_nonPositiveId_throwsIAE() {
     assertThrows(IllegalArgumentException.class,
-        () -> service.updateRestaurant(0, restaurant(0, "R", "L")));
+        () -> service.updateRestaurant(restaurant(0, "R", "L")));
     verifyNoInteractions(restaurantDAO, orderDAO, driverDAO, menuItemDAO);
   }
 
   /** Verifies that updateRestaurant rejects a null restaurant object. */
   @Test
   void updateRestaurant_nullRestaurant_throwsIAE() {
-    assertThrows(IllegalArgumentException.class, () -> service.updateRestaurant(1, null));
+    assertThrows(IllegalArgumentException.class, () -> service.updateRestaurant(null));
     verifyNoInteractions(restaurantDAO, orderDAO, driverDAO, menuItemDAO);
   }
 
@@ -153,7 +155,7 @@ public class RestaurantServiceTest {
   @Test
   void updateRestaurant_blankName_throwsIAE() {
     assertThrows(IllegalArgumentException.class,
-        () -> service.updateRestaurant(1, restaurant(0, " ", "Seattle")));
+        () -> service.updateRestaurant(restaurant(0, " ", "Seattle")));
     verifyNoInteractions(restaurantDAO, orderDAO, driverDAO, menuItemDAO);
   }
 
@@ -161,7 +163,7 @@ public class RestaurantServiceTest {
   @Test
   void updateRestaurant_blankLocation_throwsIAE() {
     assertThrows(IllegalArgumentException.class,
-        () -> service.updateRestaurant(1, restaurant(0, "R1", " ")));
+        () -> service.updateRestaurant(restaurant(0, "R1", " ")));
     verifyNoInteractions(restaurantDAO, orderDAO, driverDAO, menuItemDAO);
   }
 
@@ -171,7 +173,7 @@ public class RestaurantServiceTest {
     when(restaurantDAO.restaurantExists(5L)).thenReturn(false);
 
     assertThrows(IllegalArgumentException.class,
-        () -> service.updateRestaurant(5L, restaurant(0, "R1", "Seattle")));
+        () -> service.updateRestaurant(restaurant(5L, "R1", "Seattle")));
 
     verify(restaurantDAO).restaurantExists(5L);
     verify(restaurantDAO, never()).updateRestaurant(anyLong(), anyString(), anyString());
@@ -184,7 +186,7 @@ public class RestaurantServiceTest {
     when(restaurantDAO.restaurantExistsByNameExcludingId(5L, "R2")).thenReturn(true);
 
     assertThrows(IllegalStateException.class,
-        () -> service.updateRestaurant(5L, restaurant(0, "R2", "Seattle")));
+        () -> service.updateRestaurant(restaurant(5L, "R2", "Seattle")));
 
     verify(restaurantDAO).restaurantExists(5L);
     verify(restaurantDAO).restaurantExistsByNameExcludingId(5L, "R2");
@@ -199,7 +201,7 @@ public class RestaurantServiceTest {
     when(restaurantDAO.updateRestaurant(5L, "R2", "Seattle")).thenReturn(false);
 
     assertThrows(IllegalArgumentException.class,
-        () -> service.updateRestaurant(5L, restaurant(0, "R2", "Seattle")));
+        () -> service.updateRestaurant(restaurant(5L, "R2", "Seattle")));
   }
 
   /** Verifies that a valid update succeeds and calls the DAO. */
@@ -209,7 +211,7 @@ public class RestaurantServiceTest {
     when(restaurantDAO.restaurantExistsByNameExcludingId(5L, "R2")).thenReturn(false);
     when(restaurantDAO.updateRestaurant(5L, "R2", "Seattle")).thenReturn(true);
 
-    service.updateRestaurant(5L, restaurant(0, "R2", "Seattle"));
+    service.updateRestaurant(restaurant(5L, "R2", "Seattle"));
 
     verify(restaurantDAO).updateRestaurant(5L, "R2", "Seattle");
     verifyNoInteractions(orderDAO, driverDAO, menuItemDAO);
@@ -224,7 +226,7 @@ public class RestaurantServiceTest {
         .thenThrow(new SQLException("boom"));
 
     RuntimeException ex = assertThrows(RuntimeException.class,
-        () -> service.updateRestaurant(5L, restaurant(0, "R2", "Seattle")));
+        () -> service.updateRestaurant(restaurant(5L, "R2", "Seattle")));
     assertTrue(ex.getMessage().contains("Failed to update restaurant"));
     assertTrue(ex.getCause() instanceof SQLException);
   }

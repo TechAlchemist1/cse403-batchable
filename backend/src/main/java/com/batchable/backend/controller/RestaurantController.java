@@ -47,23 +47,22 @@ public class RestaurantController {
   @ResponseStatus(HttpStatus.CREATED)
   public long createRestaurant(@RequestBody Restaurant restaurant) {
     long id = restaurantService.createRestaurant(restaurant);
-    batchingManager.addManager(restaurant.id);
+    batchingManager.addManager(id);
     return id;
   }
 
   /**
    * Update mutable fields of an existing restaurant.
    *
-   * PUT /restaurant/{restaurantId}
+   * PUT /restaurant
    *
-   * @param restaurantId the ID of the restaurant to update
    * @param restaurant Restaurant object containing updated fields
    */
-  @PutMapping("/{restaurantId}")
+  @PutMapping
   @ResponseStatus(HttpStatus.NO_CONTENT)
-  public void updateRestaurant(@PathVariable long restaurantId, @RequestBody Restaurant restaurant) {
-    restaurantService.updateRestaurant(restaurantId, restaurant);
-    batchingManager.updateManagerAddress(restaurantId, restaurantService.getRestaurant(restaurantId).location);
+  public void updateRestaurant(@RequestBody Restaurant restaurant) {
+    restaurantService.updateRestaurant(restaurant);
+    batchingManager.updateManagerAddress(restaurant);
   }
 
   /**

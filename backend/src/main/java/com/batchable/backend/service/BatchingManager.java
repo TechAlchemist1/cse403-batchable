@@ -109,11 +109,13 @@ public class BatchingManager {
    * Updates the address of an existing restaurant manager. The change is propagated to the
    * associated RestaurantBatchingManager.
    *
-   * @param restaurantId the ID of the restaurant whose address changed
-   * @param restaurantAddress the new address
+   * @param restaurantId
+   * @param restaurant the restaurant to update
    * @throws IllegalArgumentException if no manager exists for the given restaurant ID
    */
-  public void updateManagerAddress(long restaurantId, String restaurantAddress) {
+  public void updateManagerAddress(Restaurant restaurant) {
+    long restaurantId = restaurant.id;
+    String restaurantAddress = restaurant.location;
     if (!restaurantManagers.containsKey(restaurantId)) {
       throw new IllegalArgumentException("Cannot update RestaurantBatchingManager for id "
           + restaurantId + " because it does not exist.");

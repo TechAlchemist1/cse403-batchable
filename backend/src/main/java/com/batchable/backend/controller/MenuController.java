@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PutMapping;
+
 
 @RestController
 // Marks this class as a REST controller in Spring
@@ -44,6 +46,17 @@ public class MenuController {
     return menuService.createMenuItem(menuItem);
   }
 
+  /**
+   * Updates an existing menu item.
+   *
+   * PUT /menu Body: JSON representing a MenuItem object
+   *
+   * @param menuItem MenuItem object from request body
+   */
+  @PutMapping
+  public void updateMenuItem(@RequestBody MenuItem menuItem) {
+    menuService.updateMenuItem(menuItem);
+  }
 
   /**
    * Removes a menu item by ID.

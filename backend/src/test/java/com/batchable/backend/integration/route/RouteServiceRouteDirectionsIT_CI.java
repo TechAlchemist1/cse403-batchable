@@ -1,9 +1,9 @@
 package com.batchable.backend.integration.route;
 
+import com.batchable.backend.exception.InvalidRouteException;
 import com.batchable.backend.model.dto.RouteDirectionsResponse;
 import com.batchable.backend.model.dto.RouteDirectionsResponse.Leg;
 import com.batchable.backend.service.RouteService;
-import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -29,14 +29,11 @@ class RouteServiceRouteDirectionsIT_CI {
   @Autowired
   private RouteService routeService;
 
-  @Autowired
-  private ObjectMapper objectMapper;
-
   /**
    * Runs the route test twice: once with leg details disabled, once with them enabled.
    */
   @Test
-  void testGetRouteDirections() {
+  void testGetRouteDirections() throws InvalidRouteException {
     String restaurantAddress = "Seattle, WA";
     List<String> stops = Arrays.asList("Bellevue, WA", "Redmond, WA", "Tacoma, WA");
 
@@ -54,19 +51,10 @@ class RouteServiceRouteDirectionsIT_CI {
    * @param includeLegs whether the API should return detailed leg information
    */
   private void testRouteForIncludeLegs(String restaurantAddress, List<String> stops,
-      boolean includeLegs) {
+      boolean includeLegs) throws InvalidRouteException {
     RouteDirectionsResponse response =
         routeService.getRouteDirections(restaurantAddress, stops, includeLegs);
     assertNotNull(response, "Response should not be null (includeLegs=" + includeLegs + ")");
-
-    // useful for debugging
-    // try {
-    // // Pretty-print JSON
-    // String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(response);
-    // System.out.println("Include legs = " + includeLegs + ":\n" + json);
-    // } catch (Exception e) {
-    // e.printStackTrace();
-    // }
 
     // Common assertions
     String polyline = response.getPolyline();

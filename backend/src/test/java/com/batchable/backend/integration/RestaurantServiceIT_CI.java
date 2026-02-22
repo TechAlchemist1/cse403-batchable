@@ -148,10 +148,10 @@ public class RestaurantServiceIT_CI extends PostgresTestBase {
 
     // Trying to rename r1 to r2's name should fail
     assertThrows(IllegalStateException.class,
-        () -> restaurantService.updateRestaurant(r1, new Restaurant(0, "R2", "Seattle")));
+        () -> restaurantService.updateRestaurant(new Restaurant(r1, "R2", "Seattle")));
 
     // Valid update
-    restaurantService.updateRestaurant(r1, new Restaurant(0, "R1-new", "Seattle-new"));
+    restaurantService.updateRestaurant(new Restaurant(r1, "R1-new", "Seattle-new"));
 
     Restaurant got = restaurantService.getRestaurant(r1);
     assertEquals("R1-new", got.name);

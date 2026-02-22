@@ -107,16 +107,17 @@ public class RestaurantService {
    *  - Persist changes
    *
    * Errors:
-   *  - IllegalArgumentException if restaurantId does not exist
    *  - IllegalArgumentException if updated fields are invalid
    *  - RuntimeException if persistence fails
    */
-  public void updateRestaurant(long restaurantId, Restaurant restaurant) {
-    if (restaurantId <= 0)
-      throw new IllegalArgumentException("restaurantId must be positive");
-
+  public void updateRestaurant(Restaurant restaurant) {
     if (restaurant == null)
       throw new IllegalArgumentException("restaurant data required");
+
+    long restaurantId = restaurant.id;
+
+    if (restaurantId <= 0)
+      throw new IllegalArgumentException("restaurantId must be positive");
 
     if (restaurant.name == null || restaurant.name.trim().isEmpty())
       throw new IllegalArgumentException("name is required");

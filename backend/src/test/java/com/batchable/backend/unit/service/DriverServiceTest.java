@@ -1,4 +1,4 @@
-package com.batchable.backend.service;
+package com.batchable.backend.unit.service;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -8,6 +8,7 @@ import com.batchable.backend.db.dao.BatchDAO;
 import com.batchable.backend.db.dao.DriverDAO;
 import com.batchable.backend.db.models.Batch;
 import com.batchable.backend.db.models.Driver;
+import com.batchable.backend.service.DriverService;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.Optional;
@@ -46,13 +47,13 @@ public class DriverServiceTest {
     Driver d =
         new Driver(/* id= */0, /* restaurantId= */10, "Alice", "206-555-0101", /* onShift= */true);
 
-    when(driverDAO.createDriver(eq(10L), eq("Alice"), eq("206-555-0101"), eq(false)))
+    when(driverDAO.createDriver(eq(10L), eq("Alice"), eq("206-555-0101"), eq(true)))
         .thenReturn(123L);
 
     long id = service.createDriver(d);
 
     assertEquals(123L, id);
-    verify(driverDAO).createDriver(10L, "Alice", "206-555-0101", false);
+    verify(driverDAO).createDriver(10L, "Alice", "206-555-0101", true);
     verifyNoMoreInteractions(driverDAO);
     verifyNoInteractions(batchDAO);
   }
@@ -123,7 +124,7 @@ public class DriverServiceTest {
     InOrder inOrder = inOrder(driverDAO);
     inOrder.verify(driverDAO).getDriver(50L);
     inOrder.verify(driverDAO).updateDriver(50L, "Bob", "206-555-2222");
-    verifyNoInteractions(batchDAO);
+  
   }
 
   /** Tests that updateDriver rejects null, non‑positive ID, blank name, or invalid phone. */

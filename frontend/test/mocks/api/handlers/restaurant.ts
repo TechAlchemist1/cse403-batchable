@@ -11,7 +11,9 @@ export const restaurantHandlers = [
   }),
   http.get(endpoint('/restaurant/:id/orders'), req => {
     return HttpResponse.json(
-      db.orders.findMatching('restaurant', asId<Restaurant>(req.params.id)),
+      db.orders
+        .findMatching('restaurant', asId<Restaurant>(req.params.id))
+        .filter(order => order.state !== 'DELIVERED'),
     );
   }),
   http.get(endpoint('/restaurant/:id/menu'), req => {

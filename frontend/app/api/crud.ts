@@ -60,7 +60,7 @@ export class CrudApi<T extends DomainObject> {
       await this.delay();
       await fetchEndpoint(
         'PUT',
-        `${this.resource}/${domainObject.id.id}`,
+        this.resource,
         this.parserPair.unparse(domainObject),
       );
       return true;

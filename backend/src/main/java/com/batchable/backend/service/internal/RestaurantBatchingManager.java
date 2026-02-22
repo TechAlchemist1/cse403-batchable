@@ -11,6 +11,7 @@ import com.batchable.backend.db.models.Batch;
 import com.batchable.backend.db.models.Driver;
 import com.batchable.backend.db.models.Order;
 import com.batchable.backend.db.models.Order.State;
+import com.batchable.backend.exception.InvalidRouteException;
 import com.batchable.backend.model.dto.RouteDirectionsResponse;
 import com.batchable.backend.service.BatchingAlgorithm;
 import com.batchable.backend.service.RouteService;
@@ -427,7 +428,13 @@ public class RestaurantBatchingManager {
     for (Order order : readyBatch.batch) {
       stops.add(order.destination);
     }
-    RouteDirectionsResponse resp = routeService.getRouteDirections(restaurantAddress, stops, false);
+    RouteDirectionsResponse resp;
+    try {
+      resp = routeService.getRouteDirections(restaurantAddress, stops, false);
+    } catch (InvalidRouteException e) {
+      // TODO handle more elegantly
+      throw new RuntimeException(e);
+    }
     Instant dispatchTime = Instant.now();
     Instant expectedCompletionTime = dispatchTime.plusSeconds(resp.getDurationSeconds());
     Long batchId = dbOrderService.createBatch(

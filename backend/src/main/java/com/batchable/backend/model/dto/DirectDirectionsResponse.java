@@ -1,6 +1,7 @@
 package com.batchable.backend.model.dto;
 
 import java.util.List;
+import com.batchable.backend.exception.InvalidRouteException;
 
 /**
  * DTO (Data Transfer Object) representing a response from the Google Directions API.
@@ -28,8 +29,9 @@ public class DirectDirectionsResponse {
    * Constructor to build a flat DirectionsResponse from Google’s nested response.
    *
    * @param googleResponse GoogleResponse parsed from the API JSON
+   * @throws InvalidRouteException 
    */
-  public DirectDirectionsResponse(GoogleResponse googleResponse) {
+  public DirectDirectionsResponse(GoogleResponse googleResponse) throws InvalidRouteException {
     if (googleResponse.getRoutes() != null && !googleResponse.getRoutes().isEmpty()) {
       GoogleResponse.Route firstRoute = googleResponse.getRoutes().get(0);
       this.distanceMeters = firstRoute.getDistanceMeters();
@@ -37,8 +39,13 @@ public class DirectDirectionsResponse {
       this.durationSeconds =
           Integer.parseInt(durationString.substring(0, durationString.length() - 1));
       if (this.distanceMeters < 0 || this.durationSeconds < 0) {
-        throw new IllegalStateException("Parsed distance or duration from google API was negative.");
+        throw new InvalidRouteException(
+            "Parsed distance or duration from google API was negative.");
       }
+    } else {
+      throw new InvalidRouteException(
+          "Could not make route from google response because the response is null or empty" + 
+          " (likely an invalid address)");
     }
   }
 

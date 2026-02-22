@@ -110,8 +110,8 @@ public class DriverServiceIT_CI extends PostgresTestBase {
     assertEquals("Alice", stored.name);
     assertEquals("206-555-0101", stored.phoneNumber);
 
-    // Service invariant: always starts off-shift
-    assertFalse(stored.onShift);
+    // We allow starting on shift
+    assertTrue(stored.onShift);
   }
 
   /** Ensures createDriver rejects null input. */
@@ -162,7 +162,8 @@ public class DriverServiceIT_CI extends PostgresTestBase {
     long rid = insertRestaurant("R1", "Seattle");
     long id = driverService.createDriver(new Driver(0, rid, "Alice", "206-555-0101", false));
 
-    // Try to change restaurantId/onShift in the object: service/DAO should only update name/phone.
+    // Try to change restaurantId/onShift in the object: service/DAO should only update
+    // name/phone/onShift.
     Driver updated =
         new Driver(id, /* restaurantId */9999, "Alicia", "425-555-2222", /* onShift */true);
     driverService.updateDriver(updated);
@@ -172,7 +173,7 @@ public class DriverServiceIT_CI extends PostgresTestBase {
     assertEquals(rid, stored.restaurantId); // unchanged
     assertEquals("Alicia", stored.name); // changed
     assertEquals("425-555-2222", stored.phoneNumber);// changed
-    assertFalse(stored.onShift); // unchanged
+    assertTrue(stored.onShift); // changed
   }
 
   /** Ensures updateDriver throws when the driver does not exist. */

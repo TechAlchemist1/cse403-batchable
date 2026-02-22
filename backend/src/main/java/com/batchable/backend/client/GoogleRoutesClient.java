@@ -1,5 +1,6 @@
 package com.batchable.backend.client;
 
+import com.batchable.backend.exception.InvalidRouteException;
 import com.batchable.backend.model.dto.*;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -28,7 +29,7 @@ public class GoogleRoutesClient {
    * Calls Google's Directions API and returns a parsed response. Automatically includes the
    * required FieldMask header.
    */
-  public DirectDirectionsResponse getDirectDirections(DirectDirectionsRequest request) {
+  public DirectDirectionsResponse getDirectDirections(DirectDirectionsRequest request) throws InvalidRouteException {
     try {
       DirectDirectionsResponse.GoogleResponse googleResponse = webClient.post()
           .uri(uriBuilder -> uriBuilder.path("/directions/v2:computeRoutes")
@@ -39,8 +40,6 @@ public class GoogleRoutesClient {
     } catch (WebClientResponseException e) {
       throw new RuntimeException(
           "Google API error: " + e.getStatusCode() + " " + e.getResponseBodyAsString());
-    } catch (Exception e) {
-      throw new RuntimeException("Failed to call Google Routes API", e);
     }
   }
 
@@ -49,7 +48,7 @@ public class GoogleRoutesClient {
    * required FieldMask header.
    */
   public RouteDirectionsResponse getRouteDirections(RouteDirectionsRequest request,
-      boolean includeLegs) {
+      boolean includeLegs) throws InvalidRouteException {
     String fieldMask = "routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline";
     if (includeLegs) {
       fieldMask += ",routes.legs";
@@ -64,8 +63,6 @@ public class GoogleRoutesClient {
     } catch (WebClientResponseException e) {
       throw new RuntimeException(
           "Google API error: " + e.getStatusCode() + " " + e.getResponseBodyAsString());
-    } catch (Exception e) {
-      throw new RuntimeException("Failed to call Google Routes API", e);
     }
   }
 
