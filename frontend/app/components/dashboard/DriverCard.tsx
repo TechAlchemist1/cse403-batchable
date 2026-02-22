@@ -22,7 +22,9 @@ export default function DriverCard({driver}: Props) {
         </div>
         <p
           className={`text-sm text-gray-500 ${
-            driver.onShift ? 'text-green-200' : 'text-red-600'
+            driver.onShift
+              ? 'text-green-800 dark:text-green-200'
+              : 'text-red-400 dark:text-red-600'
           }`}
         >
           Status: {driver.onShift ? 'ON' : 'OFF'} SHIFT
