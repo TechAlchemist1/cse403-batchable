@@ -13,7 +13,6 @@ public class TwilioWebhookController {
 
         System.out.println("Incoming SMS from: " + from);
         System.out.println("Message body: " + body);
-
         // Later this will call BatchingManager
         // For now just log
 

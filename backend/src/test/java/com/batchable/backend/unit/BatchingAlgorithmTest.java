@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 
 import com.batchable.backend.db.models.Order;
 import com.batchable.backend.db.models.Order.State;
+import com.batchable.backend.exception.InvalidRouteException;
 import com.batchable.backend.service.BatchingAlgorithm;
 import com.batchable.backend.service.BatchingAlgorithm.TentativeBatch;
 import com.batchable.backend.service.DbOrderService;
@@ -67,7 +68,7 @@ class BatchingAlgorithmTest {
    * Computes the last allowed cooked time for the first order in a batch, based on its destination
    * and the hand‑deliver overhead.
    */
-  private Instant getLastAllowedCookedTime(Order firstOrder, String restaurantAddress) {
+  private Instant getLastAllowedCookedTime(Order firstOrder, String restaurantAddress) throws InvalidRouteException {
     int firstDeliverySeconds =
         mockRouteService.getSecondsBetween(restaurantAddress, firstOrder.destination)
             + SECONDS_TO_HAND_DELIVER;
@@ -84,7 +85,7 @@ class BatchingAlgorithmTest {
    * the first order. If checkEdges is false, the cross‑batch delivery time constraints are not
    * verified.
    */
-  void checkInvariants(List<TentativeBatch> batches, boolean checkEdges) {
+  void checkInvariants(List<TentativeBatch> batches, boolean checkEdges) throws InvalidRouteException {
     Set<Long> orderIds = new HashSet<Long>();
     int size = 0;
     Instant nextCt = null;
@@ -501,7 +502,6 @@ class BatchingAlgorithmTest {
       String to = invocation.getArgument(1);
       String key = from + "→" + to;
       if (travelTimeMap.containsKey(key)) {
-        System.out.println("GETTING " + key + " " + "time: " + travelTimeMap.get(key));
         return travelTimeMap.get(key);
       }
       throw new IllegalArgumentException("Unexpected route: " + key);

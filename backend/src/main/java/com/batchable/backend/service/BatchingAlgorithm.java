@@ -10,6 +10,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.springframework.stereotype.Service;
 import com.batchable.backend.db.models.Order;
+import com.batchable.backend.exception.InvalidRouteException;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.Cache;
 
@@ -128,8 +129,14 @@ public class BatchingAlgorithm {
       batches.remove(i);
     } else if (j == 0) {
       // If the removed order was the first in the batch, recompute latestAllowedCookedTime
-      tentativeBatch.latestAllowedCookedTime =
-          getLastAllowedCookedTime(batch.get(0), restaurantAddress);
+      try {
+        tentativeBatch.latestAllowedCookedTime =
+            getLastAllowedCookedTime(batch.get(0), restaurantAddress);
+      } catch (InvalidRouteException e) {
+        throw new IllegalStateException("Order with id " + batch.get(0).id
+            + " no longer has a valid route from the restaurant", e);
+      }
+
 
       // Remove and reinsert batch to maintain correct order in the batch list
       batches.remove(i);
@@ -185,8 +192,16 @@ public class BatchingAlgorithm {
         || order.cookedTime.isAfter(order.deliveryTime)) {
       throw new IllegalStateException("Orders must have initialTime < cookedTime < deliveryTime");
     }
-
-    Instant lastAllowedCookedTime = getLastAllowedCookedTime(order, restaurantAddress);
+    Instant lastAllowedCookedTime;
+    try {
+      lastAllowedCookedTime = getLastAllowedCookedTime(order, restaurantAddress);
+    } catch (InvalidRouteException e) {
+      // Order location is invalid
+      // Use invariant that order has already been added to db
+      dbOrderService.removeOrder(order.id);
+      throw new IllegalStateException(
+          "Could not add order id " + order.id + " to batching algorithm", e);
+    }
     if (order.cookedTime.isAfter(lastAllowedCookedTime)) {
       Order updatedOrder = fixDeliveryTime(order, lastAllowedCookedTime);
       addOrder(batches, updatedOrder, restaurantAddress);
@@ -317,7 +332,8 @@ public class BatchingAlgorithm {
    * @param restaurantAddress the address of the restaurant
    * @return the latest instant at which the order may be cooked
    */
-  private Instant getLastAllowedCookedTime(Order firstOrder, String restaurantAddress) {
+  private Instant getLastAllowedCookedTime(Order firstOrder, String restaurantAddress)
+      throws InvalidRouteException {
     int firstDeliverySeconds = secondsToMakeDelivery(restaurantAddress, firstOrder.destination);
     Instant lastAllowedCookedTime =
         // We subtract one to make it easier to use whole minutes in tests,
@@ -339,7 +355,13 @@ public class BatchingAlgorithm {
         .toSeconds() < SECONDS_TO_HAND_DELIVER) {
       return false;
     }
-    int deliverySeconds = secondsToMakeDelivery(from.destination, to.destination);
+    int deliverySeconds;
+    try {
+      deliverySeconds = secondsToMakeDelivery(from.destination, to.destination);
+    } catch (InvalidRouteException e) {
+      // cannot calculate direct route from 'from' to 'to'
+      return false;
+    }
     // We subtract one to make it easier to use whole minutes in tests,
     // alternatively could have just made SECONDS_TO_HAND_DELIVER not divisible by 60
     Instant earliestArrival = from.deliveryTime.plus(Duration.ofSeconds(deliverySeconds - 1));
@@ -355,15 +377,14 @@ public class BatchingAlgorithm {
    * @return time to make the delivery in seconds, including handoff overhead
    * @throws RuntimeException if the underlying route service call fails
    */
-  private int secondsToMakeDelivery(String from, String to) {
+  private int secondsToMakeDelivery(String from, String to) throws InvalidRouteException {
     String key = from + "→" + to;
-    try {
-      return travelTimeCache.get(key,
-          () -> routeService.getSecondsBetween(from, to) + SECONDS_TO_HAND_DELIVER);
-    } catch (ExecutionException e) {
-      throw new RuntimeException("Google API call failed for route: " + from + " → " + to,
-          e.getCause());
+    Integer travelTime = travelTimeCache.getIfPresent(key);
+    if (travelTime == null) {
+      travelTime = routeService.getSecondsBetween(from, to) + SECONDS_TO_HAND_DELIVER;
+      travelTimeCache.put(key, travelTime);
     }
+    return travelTime;
   }
 
   public int getSecondsToHandDeliver() {

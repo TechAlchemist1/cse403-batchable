@@ -158,7 +158,7 @@ public class MenuServiceIT_CI extends PostgresTestBase {
     long firstId = menuService.createMenuItem(menuItem(0, rid, "Burger"));
     assertTrue(firstId > 0);
 
-    assertThrows(IllegalStateException.class,
+    assertThrows(RuntimeException.class,
         () -> menuService.createMenuItem(menuItem(0, rid, "Burger")));
 
     assertEquals(1L, countMenuItemsForRestaurant(rid));

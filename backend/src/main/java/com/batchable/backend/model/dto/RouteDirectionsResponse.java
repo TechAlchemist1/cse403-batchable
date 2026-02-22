@@ -2,6 +2,7 @@ package com.batchable.backend.model.dto;
 
 import java.util.ArrayList;
 import java.util.List;
+import com.batchable.backend.exception.InvalidRouteException;
 
 /**
  * DTO representing a simplified response from the Google Routes API, with optional legs.
@@ -17,7 +18,7 @@ public class RouteDirectionsResponse {
 
   public RouteDirectionsResponse() {}
 
-  public RouteDirectionsResponse(GoogleResponse googleResponse) {
+  public RouteDirectionsResponse(GoogleResponse googleResponse) throws InvalidRouteException {
     if (googleResponse != null && googleResponse.getRoutes() != null
         && !googleResponse.getRoutes().isEmpty()) {
 
@@ -25,6 +26,8 @@ public class RouteDirectionsResponse {
 
       if (firstRoute.getPolyline() != null) {
         this.polyline = firstRoute.getPolyline().getEncodedPolyline();
+      } else {
+        throw new InvalidRouteException("Polyline is null");
       }
 
       this.distanceMeters = firstRoute.getDistanceMeters();
@@ -33,10 +36,12 @@ public class RouteDirectionsResponse {
       if (durationString != null && durationString.endsWith("s")) {
         this.durationSeconds =
             Integer.parseInt(durationString.substring(0, durationString.length() - 1));
+      } else {
+        throw new InvalidRouteException("Could not parse route duration (seconds)");
       }
 
       if (distanceMeters < 0 || durationSeconds < 0) {
-        throw new IllegalStateException(
+        throw new InvalidRouteException(
             "Parsed distance or duration from Google API was negative.");
       }
 
@@ -49,6 +54,10 @@ public class RouteDirectionsResponse {
           this.legs.add(leg);
         }
       }
+    } else {
+      throw new InvalidRouteException(
+          "Could not make route from google response because the response is null or empty"
+              + " (likely an invalid address)");
     }
   }
 

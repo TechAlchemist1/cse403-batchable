@@ -2,6 +2,7 @@ package com.batchable.backend.service;
 
 // Client responsible for talking to Google Routes API
 import com.batchable.backend.client.GoogleRoutesClient;
+import com.batchable.backend.exception.InvalidRouteException;
 import com.batchable.backend.model.TravelMode;
 import com.batchable.backend.model.dto.DirectDirectionsRequest;
 // DTOs used to build requests and return responses
@@ -12,6 +13,7 @@ import com.batchable.backend.model.dto.DistanceMatrixResponse;
 import com.batchable.backend.model.dto.RouteDirectionsRequest;
 import com.batchable.backend.model.dto.RouteDirectionsResponse;
 import com.batchable.backend.model.dto.Waypoint;
+import org.springframework.beans.factory.annotation.Autowired;
 // Marks this class as a Spring service (business logic layer)
 import org.springframework.stereotype.Service;
 import java.util.ArrayList;
@@ -19,7 +21,7 @@ import java.util.List;
 
 @Service
 public class RouteService {
-
+  @Autowired
   // Dependency on the client that actually calls Google
   // This keeps HTTP logic out of controllers
   private final GoogleRoutesClient routesClient;
@@ -39,8 +41,7 @@ public class RouteService {
    * This method: - translates simple inputs (Strings) - into a structured DirectionsRequest DTO -
    * sets default business rules (e.g., travel mode) - delegates the API call to the client
    */
-  public DirectDirectionsResponse getDirectDirections(String from, String to) {
-
+  public DirectDirectionsResponse getDirectDirections(String from, String to) throws InvalidRouteException {
     // Build the request object expected by Google Routes
     DirectDirectionsRequest req = new DirectDirectionsRequest();
     req.setOrigin(new Waypoint(from));
@@ -51,14 +52,15 @@ public class RouteService {
     req.setTravelMode(TravelMode.DRIVE);
 
     // Delegate the external API call to the client
-    return routesClient.getDirectDirections(req);
+    DirectDirectionsResponse resp = routesClient.getDirectDirections(req);
+    return resp;
   }
 
   /**
    * Business-level method for getting the current integer number of seconds to travel from the
    * address 'from' to the address 'to'.
    */
-  public int getSecondsBetween(String from, String to) {
+  public int getSecondsBetween(String from, String to) throws InvalidRouteException {
     return getDirectDirections(from, to).getDurationSeconds();
   }
 
@@ -69,7 +71,7 @@ public class RouteService {
    * sets default business rules (e.g., travel mode) - delegates the API call to the client
    */
   public RouteDirectionsResponse getRouteDirections(String resterauntAddress, List<String> stops,
-      boolean includeLegs) {
+      boolean includeLegs) throws InvalidRouteException {
 
     // Build the request object expected by Google Routes
     RouteDirectionsRequest req = new RouteDirectionsRequest();

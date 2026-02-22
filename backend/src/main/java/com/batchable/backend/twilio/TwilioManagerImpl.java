@@ -24,9 +24,5 @@ public class TwilioManagerImpl implements TwilioManager {
                 new PhoneNumber(config.getPhoneNumber()),
                 message
         ).create();
-
-        // Log Twilio message ID and status for debugging/tracking
-        System.out.println("Twilio SID: " + twilioMessage.getSid());
-        System.out.println("Twilio Status: " + twilioMessage.getStatus());
     }
 }

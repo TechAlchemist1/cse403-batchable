@@ -1,4 +1,4 @@
-package com.batchable.backend.service;
+package com.batchable.backend.unit.service;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -13,6 +13,7 @@ import com.batchable.backend.db.dao.BatchDAO;
 import com.batchable.backend.db.dao.OrderDAO;
 import com.batchable.backend.db.models.Batch;
 import com.batchable.backend.db.models.Order;
+import com.batchable.backend.service.DbOrderService;
 import com.batchable.backend.websocket.OrderWebSocketPublisher;
 import java.sql.SQLException;
 import java.time.Instant;

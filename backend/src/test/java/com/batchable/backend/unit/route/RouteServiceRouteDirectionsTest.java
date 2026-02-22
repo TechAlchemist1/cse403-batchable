@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.batchable.backend.client.GoogleRoutesClient;
+import com.batchable.backend.exception.InvalidRouteException;
 import com.batchable.backend.model.TravelMode;
 import com.batchable.backend.model.dto.RouteDirectionsRequest;
 import com.batchable.backend.model.dto.RouteDirectionsResponse;
@@ -38,7 +39,7 @@ class RouteServiceRouteDirectionsTest {
    * the client is returned unchanged.
    */
   @Test
-  void testGetRouteDirections() {
+  void testGetRouteDirections() throws InvalidRouteException {
     String restaurantAddress = "123 Main St";
     List<String> stops = Arrays.asList("Stop 1", "Stop 2", "Stop 3");
 

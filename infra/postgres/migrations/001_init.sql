@@ -107,5 +107,5 @@ CREATE TABLE Menu_Item (
   UNIQUE (restaurant_id, name)
 );
 
--- INSERT INTO Restaurant (id, name, location)
--- VALUES (1, 'applesneeze', 'Lynnwood, WA');
+INSERT INTO Restaurant (id, name, location)
+VALUES (1, 'applesneeze', 'Lynnwood, WA');

@@ -1,4 +1,4 @@
-package com.batchable.backend.service;
+package com.batchable.backend.unit.service;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 import com.batchable.backend.db.dao.MenuItemDAO;
 import com.batchable.backend.db.dao.RestaurantDAO;
 import com.batchable.backend.db.models.MenuItem;
+import com.batchable.backend.service.MenuService;
 import java.sql.SQLException;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -99,15 +100,13 @@ public class MenuServiceTest {
     MenuItem mi = new MenuItem(0, 7, "Burger");
 
     when(restaurantDAO.restaurantExists(7L)).thenReturn(true);
-    when(menuItemDAO.menuItemExistsForRestaurantByName(7L, "Burger")).thenReturn(true);
+    when(menuItemDAO.createMenuItem(7L, "Burger")).thenThrow(SQLException.class);
 
-    IllegalStateException ex =
-        assertThrows(IllegalStateException.class, () -> menuService.createMenuItem(mi));
-    assertTrue(ex.getMessage().contains("Duplicate menu item"));
-
+    RuntimeException ex =
+        assertThrows(RuntimeException.class, () -> menuService.createMenuItem(mi));
+    assertTrue(ex.getMessage().contains("Failed to create menu item"));
     verify(restaurantDAO).restaurantExists(7L);
-    verify(menuItemDAO).menuItemExistsForRestaurantByName(7L, "Burger");
-    verify(menuItemDAO, never()).createMenuItem(anyLong(), anyString());
+    verify(menuItemDAO).createMenuItem(7L, "Burger");
   }
 
   /**
@@ -118,14 +117,12 @@ public class MenuServiceTest {
     MenuItem mi = new MenuItem(0, 7, "Burger");
 
     when(restaurantDAO.restaurantExists(7L)).thenReturn(true);
-    when(menuItemDAO.menuItemExistsForRestaurantByName(7L, "Burger")).thenReturn(false);
     when(menuItemDAO.createMenuItem(7L, "Burger")).thenReturn(99L);
 
     long id = menuService.createMenuItem(mi);
     assertEquals(99L, id);
 
     verify(restaurantDAO).restaurantExists(7L);
-    verify(menuItemDAO).menuItemExistsForRestaurantByName(7L, "Burger");
     verify(menuItemDAO).createMenuItem(7L, "Burger");
     verifyNoMoreInteractions(menuItemDAO, restaurantDAO);
   }
@@ -139,7 +136,6 @@ public class MenuServiceTest {
     MenuItem mi = new MenuItem(0, 7, "Burger");
 
     when(restaurantDAO.restaurantExists(7L)).thenReturn(true);
-    when(menuItemDAO.menuItemExistsForRestaurantByName(7L, "Burger")).thenReturn(false);
     when(menuItemDAO.createMenuItem(7L, "Burger")).thenThrow(new SQLException("boom"));
 
     RuntimeException ex =
@@ -148,7 +144,6 @@ public class MenuServiceTest {
     assertTrue(ex.getCause() instanceof SQLException);
 
     verify(restaurantDAO).restaurantExists(7L);
-    verify(menuItemDAO).menuItemExistsForRestaurantByName(7L, "Burger");
     verify(menuItemDAO).createMenuItem(7L, "Burger");
   }
 

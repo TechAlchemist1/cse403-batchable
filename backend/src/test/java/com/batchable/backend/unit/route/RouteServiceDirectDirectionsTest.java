@@ -1,6 +1,7 @@
 package com.batchable.backend.unit.route;
 
 import com.batchable.backend.client.GoogleRoutesClient;
+import com.batchable.backend.exception.InvalidRouteException;
 import com.batchable.backend.model.dto.DirectDirectionsResponse;
 import com.batchable.backend.service.RouteService;
 import org.junit.jupiter.api.Test;
@@ -21,7 +22,7 @@ class RouteServiceDirectDirectionsTest {
    * duration values.
    */
   @Test
-  void testGetDirections() {
+  void testGetDirections() throws InvalidRouteException {
     // Arrange
     GoogleRoutesClient mockClient = Mockito.mock(GoogleRoutesClient.class);
     DirectDirectionsResponse expectedResponse = new DirectDirectionsResponse();
