@@ -23,6 +23,7 @@ async function checkedCreate<T extends DomainObject>(
   }
   expect(id.id).toBeTypeOf('number');
   expect(id.id).not.toBe(domainObject.id.id);
+  expect(await api.exists(id)).toBe(true);
   return id;
 }
 
@@ -44,11 +45,21 @@ async function expectReadbackCreated<T extends DomainObject>(
 async function expectMissingDeleted<T extends DomainObject>(
   api: CrudApi<T>,
   domainObject: T,
+  tryBrokenRud: boolean = true,
 ) {
   const id = await checkedCreate(api, domainObject);
+  const readback = await api.read(id);
+  if (readback === null) {
+    expect.fail('read-back domain object should exist prior to deletion');
+  }
   const deleted = await api.delete(id);
   expect(deleted).toBe(true);
   expect(await api.exists(id)).toBe(false);
+  if (tryBrokenRud) {
+    expect(await api.read(id)).toBe(null);
+    expect(await api.delete(id)).toBe(false);
+    expect(await api.update(readback)).toBe(false);
+  }
 }
 
 async function expectUpdatedChanged<T extends DomainObject>(
@@ -275,7 +286,7 @@ describe('/order endpoint', () => {
 
   it('is gone after it is deleted', async () => {
     const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());
-    await expectMissingDeleted(orderApi, getFakeOrder(restaurant));
+    await expectMissingDeleted(orderApi, getFakeOrder(restaurant), false);
   });
 
   it('is high priority after being remade', async () => {
