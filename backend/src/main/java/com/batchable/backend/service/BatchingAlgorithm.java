@@ -408,4 +408,8 @@ public class BatchingAlgorithm {
   public int getSecondsToHandDeliver() {
     return SECONDS_TO_HAND_DELIVER;
   }
+
+  public int getPaddingSeconds() {
+    return PADDING_SECONDS;
+  }
 }
