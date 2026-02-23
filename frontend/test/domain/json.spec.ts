@@ -24,6 +24,21 @@ function testPair<T extends DomainObject>(
   }
 }
 
+describe('field parsing', () => {
+  it('parses and unparses a particular id', () => {
+    expect(json.driver.field('id').parse(520)).toEqual({
+      type: 'Driver',
+      id: 520,
+    });
+    expect(
+      json.driver.field('id').unparse({
+        type: 'Driver',
+        id: 520,
+      }),
+    ).toBe(520);
+  });
+});
+
 describe('Restaurant parsing', () => {
   it('parses a valid Restaurant', () => {
     testPair<Restaurant>(
@@ -99,85 +114,61 @@ describe('Driver parsing', () => {
 });
 
 describe('Order parsing', () => {
+  const now = Date.now();
+  const initialTime = new Date(now);
+  const deliveryTime = new Date(now + 1.5e3);
+  const cookedTime = new Date(now + 1e3);
+  const ORDER_JSON: json.JSONDomainObject<Order> = {
+    id: 8129387,
+    restaurant: 124192,
+    destination: '1600 Pennsylvania Avenue NW, Washington, DC 20500',
+    itemNames: '["Tragedy","Comedy"]',
+    initialTime: initialTime.toISOString(),
+    deliveryTime: deliveryTime.toISOString(),
+    cookedTime: cookedTime.toISOString(),
+    state: 'COOKED',
+    highPriority: true,
+    currentBatch: 19237245,
+  };
+  const ORDER: Order = {
+    id: {
+      type: 'Order',
+      id: 8129387,
+    },
+    restaurant: {
+      type: 'Restaurant',
+      id: 124192,
+    },
+    destination: {
+      address: '1600 Pennsylvania Avenue NW, Washington, DC 20500',
+    },
+    itemNames: ['Tragedy', 'Comedy'],
+    initialTime,
+    deliveryTime,
+    cookedTime,
+    state: 'cooked',
+    highPriority: true,
+    currentBatch: {
+      type: 'Batch',
+      id: 19237245,
+    },
+  };
   it('parses a valid Order', () => {
-    const now = Date.now();
-    const initialTime = new Date(now);
-    const deliveryTime = new Date(now + 1.5e3);
-    const cookedTime = new Date(now + 1e3);
     expect(new Date(new Date(now).toISOString())).toEqual(new Date(now));
-    testPair<Order>(
-      json.order,
-      {
-        id: 8129387,
-        restaurant: 124192,
-        destination: '1600 Pennsylvania Avenue NW, Washington, DC 20500',
-        itemNames: '["Tragedy","Comedy"]',
-        initialTime: initialTime.toISOString(),
-        deliveryTime: deliveryTime.toISOString(),
-        cookedTime: cookedTime.toISOString(),
-        state: 'COOKED',
-        highPriority: true,
-        currentBatch: 19237245,
-      },
-      {
-        id: {
-          type: 'Order',
-          id: 8129387,
-        },
-        restaurant: {
-          type: 'Restaurant',
-          id: 124192,
-        },
-        destination: {
-          address: '1600 Pennsylvania Avenue NW, Washington, DC 20500',
-        },
-        itemNames: ['Tragedy', 'Comedy'],
-        initialTime,
-        deliveryTime,
-        cookedTime,
-        state: 'cooked',
-        highPriority: true,
-        currentBatch: {
-          type: 'Batch',
-          id: 19237245,
-        },
-      },
-    );
+    testPair<Order>(json.order, ORDER_JSON, ORDER);
   });
 
   it('survives a null batch', () => {
     testPair<Order>(
       json.order,
       {
-        id: 8129387,
-        restaurant: 124192,
-        destination: '1600 Pennsylvania Avenue NW, Washington, DC 20500',
+        ...ORDER_JSON,
         itemNames: '[]',
-        initialTime: '2003-08-29T08:30:00.000Z',
-        deliveryTime: '2003-08-29T08:30:00.000Z',
-        cookedTime: '2003-08-29T08:30:00.000Z',
-        state: 'COOKED',
-        highPriority: true,
         currentBatch: null,
       },
       {
-        id: {
-          type: 'Order',
-          id: 8129387,
-        },
-        restaurant: {
-          type: 'Restaurant',
-          id: 124192,
-        },
-        destination: {
-          address: '1600 Pennsylvania Avenue NW, Washington, DC 20500',
-        },
+        ...ORDER,
         itemNames: [],
-        initialTime: new Date('2003-08-29T08:30:00.000Z'),
-        deliveryTime: new Date('2003-08-29T08:30:00.000Z'),
-        cookedTime: new Date('2003-08-29T08:30:00.000Z'),
-        state: 'cooked',
-        highPriority: true,
         currentBatch: null,
       },
     );
@@ -187,35 +178,34 @@ describe('Order parsing', () => {
     testPair<Order>(
       json.order,
       {
-        id: 8129387,
-        restaurant: 124192,
-        destination: '1600 Pennsylvania Avenue NW, Washington, DC 20500',
+        ...ORDER_JSON,
         itemNames: '["Tragedy","Comedy"]',
         initialTime: 'Hello!!!',
-        deliveryTime: '2003-08-29T08:30:00.000Z',
-        cookedTime: '2003-08-29T08:30:00.000Z',
-        state: 'COOKED',
-        highPriority: true,
         currentBatch: null,
       },
       {
-        id: {
-          type: 'Order',
-          id: 8129387,
-        },
-        restaurant: {
-          type: 'Restaurant',
-          id: 124192,
-        },
-        destination: {
-          address: '1600 Pennsylvania Avenue NW, Washington, DC 20500',
-        },
+        ...ORDER,
         itemNames: ['Tragedy', 'Comedy'],
         initialTime: new Date(NaN),
-        deliveryTime: new Date('2003-08-29T08:30:00.000Z'),
-        cookedTime: new Date('2003-08-29T08:30:00.000Z'),
-        state: 'cooked',
-        highPriority: true,
+        currentBatch: null,
+      },
+      false,
+    );
+  });
+
+  it('survives an invalid item list', () => {
+    testPair<Order>(
+      json.order,
+      {
+        ...ORDER_JSON,
+        itemNames: 'hopeless',
+        initialTime: 'Hello!!!',
+        currentBatch: null,
+      },
+      {
+        ...ORDER,
+        itemNames: [],
+        initialTime: new Date(NaN),
         currentBatch: null,
       },
       false,
