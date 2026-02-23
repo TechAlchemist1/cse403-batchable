@@ -16,6 +16,7 @@ import com.batchable.backend.model.dto.RouteDirectionsResponse;
 import com.batchable.backend.service.BatchingAlgorithm;
 import com.batchable.backend.service.RouteService;
 import com.batchable.backend.service.BatchingAlgorithm.TentativeBatch;
+import com.batchable.backend.util.Log;
 import com.batchable.backend.service.DbOrderService;
 import com.batchable.backend.service.DriverService;
 import com.batchable.backend.service.RestaurantService;
@@ -66,6 +67,8 @@ public class RestaurantBatchingManager {
     this.driverService = driverService;
     this.restaurantService = restaurantService;
     this.batches = (batches != null) ? batches : new Batches();
+
+    initializeOrders();
   }
 
   /**
@@ -84,56 +87,119 @@ public class RestaurantBatchingManager {
   }
 
   /**
-   * Holds all batches for this restaurant, separated by status.
+   * Holds all batches for this restaurant, separated by status. Batches are grouped into three
+   * categories: tentativeBatches – batches that are still being formed readyBatches – batches that
+   * are ready for delivery (FIFO queue) activeBatches – batches that are currently in progress
    */
   public static class Batches {
+    /** List of batches that are still tentative (not yet ready). */
     private final List<TentativeBatch> tentativeBatches;
-    // we use a queue for readyBatches to efficiently assign batches that were
-    // ready first to drivers
+
+    /**
+     * Queue of batches that are ready to be assigned to drivers. A queue is used to efficiently
+     * assign batches in the order they became ready.
+     */
     private final Queue<ReadyBatch> readyBatches;
+
+    /** List of batches that are currently active (in progress). */
     private final List<Batch> activeBatches;
 
+    /** Creates an empty Batches container. */
     public Batches() {
       this.tentativeBatches = new ArrayList<TentativeBatch>();
       this.readyBatches = new LinkedList<ReadyBatch>();
       this.activeBatches = new ArrayList<Batch>();
     }
 
+    /**
+     * Creates a Batches container with the given lists. The ready batches are stored in a queue.
+     *
+     * @param tb list of tentative batches (will be copied)
+     * @param rb list of ready batches (will be copied into a queue)
+     * @param ab list of active batches (will be copied)
+     */
     public Batches(List<TentativeBatch> tb, List<ReadyBatch> rb, List<Batch> ab) {
       this.tentativeBatches = new ArrayList<TentativeBatch>(tb);
       this.readyBatches = new LinkedList<ReadyBatch>(rb);
       this.activeBatches = new ArrayList<Batch>(ab);
     }
 
+    /**
+     * Creates a Batches container with the given tentative and active lists and a ready queue.
+     *
+     * @param tb list of tentative batches (will be copied)
+     * @param rb queue of ready batches (will be copied into a new queue)
+     * @param ab list of active batches (will be copied)
+     */
     public Batches(List<TentativeBatch> tb, Queue<ReadyBatch> rb, List<Batch> ab) {
       this.tentativeBatches = new ArrayList<TentativeBatch>(tb);
       this.readyBatches = new LinkedList<ReadyBatch>(rb);
       this.activeBatches = new ArrayList<Batch>(ab);
     }
 
+    /**
+     * Returns a defensive copy of the tentative batches list.
+     *
+     * @return a new list containing all tentative batches
+     */
     public List<TentativeBatch> getTentativeBatches() {
       return new ArrayList<TentativeBatch>(tentativeBatches);
     }
 
+    /**
+     * Returns a defensive copy of the ready batches queue.
+     *
+     * @return a new queue containing all ready batches (order preserved)
+     */
     public Queue<ReadyBatch> getReadyBatches() {
       return new LinkedList<ReadyBatch>(readyBatches);
     }
 
+    /**
+     * Returns a defensive copy of the active batches list.
+     *
+     * @return a new list containing all active batches
+     */
     public List<Batch> getActiveBatches() {
       return new ArrayList<Batch>(activeBatches);
     }
   }
 
+  /**
+   * Returns the current batches container for this restaurant.
+   *
+   * @return the Batches object holding tentative, ready, and active batches
+   */
   public Batches getBatches() {
     return this.batches;
   }
 
+  /**
+   * Sets the restaurant's address.
+   *
+   * @param restaurantAddress the new address string
+   */
   public void setRestaurantAddress(String restaurantAddress) {
     this.restaurantAddress = restaurantAddress;
   }
 
   /**
-   * Registers a listener that will be called whenever an active batch changes change.
+   * Initializes the orders for this restaurant by fetching all orders from the restaurant service,
+   * remaking each order via the database order service, and then adding them to the local state.
+   */
+  private void initializeOrders() {
+    List<Order> orders = restaurantService.getRestaurantOrders(restaurantId);
+    System.out.println("\n\n\n\n\nGOT " + orders.size() + " ORDERS!!!\n\n\n\n\n");
+    for (Order order : orders) {
+      System.out.println("REMAKING ORDER ON STARTUP");
+      Log.printAsJson(order);
+      dbOrderService.remakeOrder(order.id);
+      addOrder(dbOrderService.getOrder(order.id));
+    }
+  }
+
+  /**
+   * Registers a listener that will be called whenever an active batch changes.
    *
    * @param handler callback receiving the id of the batch that changed
    * @throws IllegalArgumentException if handler is null
@@ -287,6 +353,7 @@ public class RestaurantBatchingManager {
    * @param updateMillis how much to delay delivery times for unassigned ready batches
    */
   public void checkExpiredBatches(final long updateMillis) {
+    Log.printAsJson(batches);
     Instant now = Instant.now();
 
     List<Order> toBeReAdded = moveExpiredTentativeBatches(now);
@@ -357,6 +424,7 @@ public class RestaurantBatchingManager {
     while (!readyDrivers.isEmpty()) {
       ReadyBatch readyBatch = readyBatches.poll();
       Driver driver = readyDrivers.poll();
+      System.out.println("ready drivers " + readyDrivers.toString());
 
       Batch batch = createAndPersistBatch(readyBatch, driver);
       batches.activeBatches.add(batch);
@@ -376,6 +444,10 @@ public class RestaurantBatchingManager {
 
       for (int i = 0; i < orders.size(); i++) {
         Order order = orders.get(i);
+        if (order.state != State.COOKED) {
+          throw new IllegalStateException(
+              "Order id " + order.id + " is in a ready batch with non COOKED state");
+        }
 
         dbOrderService.updateOrderDeliveryTime(order.id,
             millisAfter(order.deliveryTime, updateMillis));
@@ -440,12 +512,13 @@ public class RestaurantBatchingManager {
     Long batchId = dbOrderService.createBatch(
         new Batch(-1, driver.id, resp.getPolyline(), dispatchTime, expectedCompletionTime));
 
-    updateOrdersWithBatchIdAndAdvanceState(readyBatch.batch, batchId);
+    updateBatchOrders(readyBatch.batch, batchId);
     return dbOrderService.getBatch(batchId);
   }
 
   /**
    * Updates each order in the given list to reference the provided batch ID, and advances its state
+   * to DRIVING
    *
    * This method persists the batch assignment via OrderService and then re-fetches each order from
    * the database to ensure the in-memory list reflects the latest state after mutation.
@@ -453,10 +526,14 @@ public class RestaurantBatchingManager {
    * @param orders the orders to advance in state and associate with the batch
    * @param batchId the ID of the batch to assign to each order
    */
-  private void updateOrdersWithBatchIdAndAdvanceState(List<Order> orders, Long batchId) {
+  private void updateBatchOrders(List<Order> orders, Long batchId) {
     for (int i = 0; i < orders.size(); i++) {
       Order order = orders.get(i);
       dbOrderService.setOrderBatchId(order.id, batchId);
+      if (order.state != State.COOKED) {
+        throw new IllegalStateException(
+            "Order id " + order.id + " has non COOKED state before being added to a batch");
+      }
       dbOrderService.advanceOrderState(order.id); // to DRIVING
       orders.set(i, dbOrderService.getOrder(order.id));
     }
@@ -476,6 +553,10 @@ public class RestaurantBatchingManager {
   private void removeUncookedOrders(List<Order> orders, List<Order> toBeReAdded) {
     for (int j = orders.size() - 1; j >= 0; j--) {
       Order order = orders.get(j);
+      if (order.state != State.COOKING && order.state != State.COOKED) {
+        throw new IllegalStateException(
+            "Tentatively batched order id " + order.id + " has state beyond COOKED");
+      }
       if (order.state != State.COOKED) {
         orders.remove(j);
         delayOrder(order);
@@ -492,11 +573,12 @@ public class RestaurantBatchingManager {
    * @param order the order to delay
    */
   private void delayOrder(Order order) {
-    dbOrderService.updateOrderDeliveryTime(order.id,
-        secondsAfter(order.deliveryTime, SECONDS_ADDITIONAL_COOK_TIME));
+    Instant newCookedTime = secondsAfter(Instant.now(), SECONDS_ADDITIONAL_COOK_TIME);
+    Duration timeBetween = Duration.between(order.cookedTime, order.deliveryTime);
+    Instant newDeliveryTime = newCookedTime.plus(timeBetween);
 
-    dbOrderService.updateOrderCookedTime(order.id,
-        secondsAfter(order.cookedTime, SECONDS_ADDITIONAL_COOK_TIME));
+    dbOrderService.updateOrderCookedTime(order.id, newCookedTime);
+    dbOrderService.updateOrderDeliveryTime(order.id, newDeliveryTime);
   }
 
   // returns the Instant 'millis' milliseconds after the given time

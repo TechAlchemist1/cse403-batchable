@@ -1,6 +1,7 @@
 package com.batchable.backend.service;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -11,6 +12,7 @@ import com.batchable.backend.db.models.Order;
 import com.batchable.backend.db.models.Restaurant;
 import com.batchable.backend.service.internal.RestaurantBatchingManager;
 import com.batchable.backend.websocket.OrderWebSocketPublisher;
+import jakarta.annotation.PostConstruct;
 
 /**
  * Service that coordinates order batching for all restaurants.
@@ -66,6 +68,15 @@ public class BatchingManager {
     this.driverService = driverService;
   }
 
+  /** Initializes the managers corresponding to pre-populated data */
+  @PostConstruct
+  private void initializeManagers() {
+    List<Restaurant> restaurants = restaurantService.getAllRestaurants();
+    for (Restaurant restaurant : restaurants) {
+      addManager(restaurant.id);
+    }
+  }
+ 
   /**
    * Retrieves the batching manager for a restaurant, throwing an exception if it does not exist.
    *
@@ -75,13 +86,8 @@ public class BatchingManager {
    */
   private RestaurantBatchingManager getManager(long restaurantId) {
     if (!restaurantManagers.containsKey(restaurantId)) {
-      // throw new IllegalArgumentException("Cannot get RestaurantBatchingManager for id "
-      // + restaurantId + "because it does not exist.");
-      Restaurant restaurant = restaurantService.getRestaurant(restaurantId);
-      String address = restaurant.location;
-      restaurantManagers.put(restaurantId,
-          new RestaurantBatchingManager(restaurantId, address, publisher, batchingAlgorithm,
-              routeService, dbOrderService, driverService, restaurantService, null));
+      throw new IllegalArgumentException("Cannot get RestaurantBatchingManager for id "
+      + restaurantId + "because it does not exist.");
     }
     return restaurantManagers.get(restaurantId);
   }
@@ -121,7 +127,6 @@ public class BatchingManager {
           + restaurantId + " because it does not exist.");
     }
     restaurantManagers.get(restaurantId).setRestaurantAddress(restaurantAddress);
-
   }
 
   /**

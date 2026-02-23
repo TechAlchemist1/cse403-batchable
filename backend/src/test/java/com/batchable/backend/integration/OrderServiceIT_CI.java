@@ -17,6 +17,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -91,8 +92,9 @@ public class OrderServiceIT_CI extends PostgresTestBase {
 
   /** Creates an order row directly with the given state and returns its ID. */
   private long createOrderRow(long restaurantId, Order.State state) throws SQLException {
-    return orderDAO.createOrder(restaurantId, "123 Pike St", "[\"Burger\"]", Instant.now(), null,
-        null, state, false, null);
+    return orderDAO.createOrder(restaurantId, "123 Pike St", "[\"Burger\"]", Instant.now(),
+        Instant.now().plus(Duration.ofMinutes(20)), Instant.now().plus(Duration.ofMinutes(10)),
+        state, false, null);
   }
 
   /** Creates a driver row (off shift) and returns its ID. */
@@ -139,7 +141,8 @@ public class OrderServiceIT_CI extends PostgresTestBase {
   void createOrder_happyPath_persists_andPublishes() throws Exception {
     long rid = createRestaurant("R1");
 
-    Order o = new Order(0L, rid, "123 Pike St", "[\"Burger\",\"Fries\"]", Instant.now(), null, null,
+    Order o = new Order(0L, rid, "123 Pike St", "[\"Burger\",\"Fries\"]", Instant.now(),
+        Instant.now().plus(Duration.ofMinutes(13)), Instant.now().plus(Duration.ofMinutes(6)),
         Order.State.COOKING, false, null);
 
     long id = service.createOrder(o);
@@ -174,7 +177,7 @@ public class OrderServiceIT_CI extends PostgresTestBase {
     assertEquals(Order.State.DELIVERED, delivered.state);
     assertNotNull(delivered.deliveryTime);
 
-    verify(messagingTemplate, times(3)).convertAndSend("/topic/orders/" + rid, "");
+    verify(messagingTemplate, times(5)).convertAndSend("/topic/orders/" + rid, "");
   }
 
   /**
@@ -206,8 +209,8 @@ public class OrderServiceIT_CI extends PostgresTestBase {
     Order got = service.getOrder(oid);
     assertEquals(Order.State.COOKING, got.state);
     assertTrue(got.highPriority);
-    assertNull(got.cookedTime);
-    assertNull(got.deliveryTime);
+    assertNotNull(got.cookedTime);
+    assertNotNull(got.deliveryTime);
     assertNull(got.batchId);
 
     verify(messagingTemplate, times(1)).convertAndSend("/topic/orders/" + rid, "");

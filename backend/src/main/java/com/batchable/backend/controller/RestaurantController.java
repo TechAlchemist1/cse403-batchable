@@ -6,7 +6,6 @@ import com.batchable.backend.db.models.Order;
 import com.batchable.backend.db.models.Restaurant;
 import com.batchable.backend.service.BatchingManager;
 import com.batchable.backend.service.RestaurantService;
-import java.util.ArrayList;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;

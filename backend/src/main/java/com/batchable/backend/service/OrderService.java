@@ -1,34 +1,24 @@
 package com.batchable.backend.service;
 
-import com.batchable.backend.db.dao.BatchDAO;
-import com.batchable.backend.db.dao.OrderDAO;
 import com.batchable.backend.db.models.Batch;
 import com.batchable.backend.db.models.Order;
-import com.batchable.backend.websocket.OrderWebSocketPublisher;
+import com.batchable.backend.db.models.Order.State;
 import java.time.Instant;
 import java.util.List;
 import org.springframework.stereotype.Service;
 
 /**
- * Business logic layer for orders. Enforces valid lifecycle transitions,
- * domain invariants, and coordinates persistence and downstream effects.
- * All order mutations must go through this service.
+ * Business logic layer for orders. Enforces valid lifecycle transitions, domain invariants, and
+ * coordinates persistence and downstream effects. All order mutations must go through this service.
  */
 @Service
 public class OrderService {
   private final DbOrderService dbOrderService;
   private final BatchingManager batchingManager;
-  private final OrderDAO orderDAO;
-  private final BatchDAO batchDAO;
-  private final OrderWebSocketPublisher publisher;
 
-  public OrderService(DbOrderService dbOrderService, BatchingManager batchingManager,
-      OrderDAO orderDAO, BatchDAO batchDAO, OrderWebSocketPublisher publisher) {
+  public OrderService(DbOrderService dbOrderService, BatchingManager batchingManager) {
     this.dbOrderService = dbOrderService;
     this.batchingManager = batchingManager;
-    this.orderDAO = orderDAO;
-    this.batchDAO = batchDAO;
-    this.publisher = publisher;
   }
 
   /**
@@ -47,8 +37,14 @@ public class OrderService {
    * Advances order state (e.g., COOKING → COOKED).
    *
    * @param orderId ID of the order to advance
+   * @throws IllegalArgumentException if this would advance the order state past COOKED
    */
   public void advanceOrderState(long orderId) {
+    Order order = dbOrderService.getOrder(orderId);
+    if (order.state.getRank() >= State.COOKED.getRank()) {
+      throw new IllegalArgumentException(
+          "Front-end cannot advance order state past cooked. Order id " + order.id);
+    }
     dbOrderService.advanceOrderState(orderId);
     batchingManager.updateOrder(orderId, false);
   }
@@ -56,22 +52,11 @@ public class OrderService {
   /**
    * Updates the cooked time of an order.
    *
-   * @param orderId    ID of the order
+   * @param orderId ID of the order
    * @param cookedTime new cooked time
    */
   public void updateOrderCookedTime(long orderId, Instant cookedTime) {
     dbOrderService.updateOrderCookedTime(orderId, cookedTime);
-    batchingManager.updateOrder(orderId, true);
-  }
-
-  /**
-   * Updates the delivery time of an order.
-   *
-   * @param orderId      ID of the order
-   * @param deliveryTime new delivery time
-   */
-  public void updateOrderDeliveryTime(long orderId, Instant deliveryTime) {
-    dbOrderService.updateOrderDeliveryTime(orderId, deliveryTime);
     batchingManager.updateOrder(orderId, true);
   }
 

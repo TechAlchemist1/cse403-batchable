@@ -104,11 +104,18 @@ class RestaurantBatchingManagerTest {
    * increased by ADDITIONAL_COOK_TIME_SEC.
    */
   private void verifyOrderDelayed(Order order, Instant originalDelivery, Instant originalCooked) {
-    verify(dbOrderService).updateOrderDeliveryTime(eq(order.id), instantCaptor.capture());
-    assertEquals(originalDelivery.plusSeconds(ADDITIONAL_COOK_TIME_SEC), instantCaptor.getValue());
+    Duration between = Duration.between(originalCooked, originalDelivery);
+
 
     verify(dbOrderService).updateOrderCookedTime(eq(order.id), instantCaptor.capture());
-    assertEquals(originalCooked.plusSeconds(ADDITIONAL_COOK_TIME_SEC), instantCaptor.getValue());
+    Instant newCooked = instantCaptor.getValue();
+
+    verify(dbOrderService).updateOrderDeliveryTime(eq(order.id), instantCaptor.capture());
+    Instant newDelivered = instantCaptor.getValue();
+
+    assertTrue(newCooked.isAfter(Instant.now()));
+    assertFalse(newDelivered.isBefore(newCooked));
+    assertTrue(Duration.between(newCooked, newDelivered).equals(between));
   }
 
   // --- Delegation tests for addOrder ---
@@ -422,7 +429,7 @@ class RestaurantBatchingManagerTest {
     Instant expiration = now.minusSeconds(5);
     Order cooked = createOrder(1L, State.COOKED, now.minus(Duration.ofMinutes(2)),
         now.plus(Duration.ofMinutes(15)));
-    Order uncooked = createOrder(2L, State.DRIVING, now.plus(Duration.ofMinutes(3)),
+    Order uncooked = createOrder(2L, State.COOKING, now.plus(Duration.ofMinutes(3)),
         now.plus(Duration.ofMinutes(18)));
 
     List<TentativeBatch> tentative = new ArrayList<>();
@@ -463,9 +470,9 @@ class RestaurantBatchingManagerTest {
   void checkExpiredBatches_handlesAllUncooked() {
     Instant now = Instant.now();
     Instant expiration = now.minusSeconds(5);
-    Order uncooked1 = createOrder(1L, State.DRIVING, now.plus(Duration.ofMinutes(5)),
+    Order uncooked1 = createOrder(1L, State.COOKING, now.plus(Duration.ofMinutes(5)),
         now.plus(Duration.ofMinutes(25)));
-    Order uncooked2 = createOrder(2L, State.DELIVERED, now.plus(Duration.ofMinutes(2)),
+    Order uncooked2 = createOrder(2L, State.COOKING, now.plus(Duration.ofMinutes(2)),
         now.plus(Duration.ofMinutes(22)));
 
     List<TentativeBatch> tentative = new ArrayList<>();
@@ -703,9 +710,9 @@ class RestaurantBatchingManagerTest {
     verify(publisher).refreshOrderData(RESTAURANT_ID);
   }
 
-  /** RemoveUncookedOrders handles all order states and delays them appropriately. */
+  /** RemoveUncookedOrders handles illegal order states and throws appropriate exception. */
   @Test
-  void removeUncookedOrders_handlesAllOrderStates() {
+  void removeUncookedOrders_throwsOnIllegalState() {
     Instant now = Instant.now();
     Order delivered = createOrder(1L, State.DELIVERED, now.plus(Duration.ofMinutes(2)),
         now.plus(Duration.ofMinutes(10)));
@@ -720,28 +727,13 @@ class RestaurantBatchingManagerTest {
         new RestaurantBatchingManager(RESTAURANT_ID, ADDRESS, publisher, batchingAlgorithm,
             routeService, dbOrderService, driverService, restaurantService, customBatches);
 
-    Order updatedDelivered =
-        createOrder(1L, State.DELIVERED, delivered.cookedTime.plusSeconds(ADDITIONAL_COOK_TIME_SEC),
-            delivered.deliveryTime.plusSeconds(ADDITIONAL_COOK_TIME_SEC));
-    when(dbOrderService.getOrder(1L)).thenReturn(updatedDelivered);
-
-    RestaurantBatchingManager spyMgr = spy(mgr);
-    doReturn(new LinkedList<>()).when(spyMgr).getReadyDrivers(anyInt());
-
-    spyMgr.checkExpiredBatches(UPDATE_MILLIS);
-
-    verify(dbOrderService).updateOrderDeliveryTime(eq(1L), any(Instant.class));
-    verify(dbOrderService).updateOrderCookedTime(eq(1L), any(Instant.class));
-    verify(batchingAlgorithm).addOrder(customBatches.getTentativeBatches(), updatedDelivered,
-        ADDRESS);
-    assertTrue(spyMgr.getBatches().getReadyBatches().isEmpty());
-    verify(publisher).refreshOrderData(RESTAURANT_ID);
+    assertThrows(IllegalStateException.class, () -> mgr.checkExpiredBatches(UPDATE_MILLIS));
   }
 
   /** delayOrder updates both cooked and delivery times by the additional time. */
   @Test
   void delayOrder_updatesBothTimes() {
-    Order order = createOrder(1L, State.DRIVING, Instant.parse("2025-01-01T10:00:00Z"),
+    Order order = createOrder(1L, State.COOKING, Instant.parse("2025-01-01T10:00:00Z"),
         Instant.parse("2025-01-01T10:30:00Z"));
 
     List<TentativeBatch> tentative = new ArrayList<>();
@@ -755,7 +747,7 @@ class RestaurantBatchingManagerTest {
             routeService, dbOrderService, driverService, restaurantService, customBatches);
 
     Order updatedOrder =
-        createOrder(1L, State.DRIVING, order.cookedTime.plusSeconds(ADDITIONAL_COOK_TIME_SEC),
+        createOrder(1L, State.COOKING, order.cookedTime.plusSeconds(ADDITIONAL_COOK_TIME_SEC),
             order.deliveryTime.plusSeconds(ADDITIONAL_COOK_TIME_SEC));
     when(dbOrderService.getOrder(1L)).thenReturn(updatedOrder);
 
@@ -763,13 +755,9 @@ class RestaurantBatchingManagerTest {
     doReturn(new LinkedList<>()).when(spyMgr).getReadyDrivers(anyInt());
 
     spyMgr.checkExpiredBatches(UPDATE_MILLIS);
+    verifyOrderDelayed(order, order.deliveryTime, order.cookedTime);
 
     verify(dbOrderService).updateOrderDeliveryTime(eq(1L), instantCaptor.capture());
-    assertEquals(order.deliveryTime.plusSeconds(ADDITIONAL_COOK_TIME_SEC),
-        instantCaptor.getValue());
-
-    verify(dbOrderService).updateOrderCookedTime(eq(1L), instantCaptor.capture());
-    assertEquals(order.cookedTime.plusSeconds(ADDITIONAL_COOK_TIME_SEC), instantCaptor.getValue());
     verify(publisher).refreshOrderData(RESTAURANT_ID);
   }
 
@@ -780,9 +768,9 @@ class RestaurantBatchingManagerTest {
 
     Order cooked1 = createOrder(1L, State.COOKED, now.minus(Duration.ofMinutes(5)),
         now.plus(Duration.ofMinutes(10)));
-    Order uncooked1 = createOrder(2L, State.DRIVING, now.plus(Duration.ofMinutes(2)),
+    Order uncooked1 = createOrder(2L, State.COOKING, now.plus(Duration.ofMinutes(2)),
         now.plus(Duration.ofMinutes(15)));
-    Order cooked2 = createOrder(3L, State.COOKING, now.plus(Duration.ofMinutes(1)),
+    Order cooked2 = createOrder(3L, State.COOKED, now.plus(Duration.ofMinutes(1)),
         now.plus(Duration.ofMinutes(20)));
 
     List<TentativeBatch> tentative = new ArrayList<>();

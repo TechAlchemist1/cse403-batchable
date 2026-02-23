@@ -160,6 +160,15 @@ public class RestaurantService {
     }
   }
 
+  /** Returns a list of all restaurants in the database */
+  public List<Restaurant> getAllRestaurants() {
+    try {
+      return restaurantDAO.listRestaurants();
+    } catch (SQLException e) {
+      throw new RuntimeException("Failed to retrieve all restaurants", e);
+    }
+  }
+
   /**
    * Removes a restaurant from the system.
    *

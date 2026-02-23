@@ -6,10 +6,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.springframework.stereotype.Service;
 import com.batchable.backend.db.models.Order;
+import com.batchable.backend.db.models.Order.State;
 import com.batchable.backend.exception.InvalidRouteException;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.Cache;
@@ -133,8 +133,9 @@ public class BatchingAlgorithm {
         tentativeBatch.latestAllowedCookedTime =
             getLastAllowedCookedTime(batch.get(0), restaurantAddress);
       } catch (InvalidRouteException e) {
-        throw new IllegalStateException("Order with id " + batch.get(0).id
-            + " no longer has a valid route from the restaurant", e);
+        throw new IllegalStateException(
+            "Order with id " + batch.get(0).id + " no longer has a valid route from the restaurant",
+            e);
       }
 
 
@@ -167,30 +168,47 @@ public class BatchingAlgorithm {
    * @param batches the list of tentative batches for a restaurant
    * @param orderId the id of the order to update
    *
-   * @throws IllegalArgumentException if the order id is not found
+   * @throws IllegalStateException if the order has state that is not COOKING or COOKED
    */
   public void updateOrderInplace(final List<TentativeBatch> batches, final long orderId) {
+    Order order = dbOrderService.getOrder(orderId);
+    if (order.state != State.COOKING && order.state != State.COOKED) {
+      throw new IllegalStateException(
+          "Order id " + order.id + " has non COOKED and non COOKING state");
+    }
+
     int[] inds = findOrder(batches, orderId, true);
     int i = inds[0];
     int j = inds[1];
     List<Order> batch = batches.get(i).batch;
-    batch.set(j, dbOrderService.getOrder(orderId));
+    batch.set(j, order);
   }
 
   /**
    * Adds an order to the earliest batch where it can fit according to delivery and cook-time
    * constraints, or creates a new batch if necessary.
-   * 
+   *
    * @param batches the current list of tentative batches for a single restaurant, sorted by latest
    *        allowed cooked time in descending order
    * @param order the order to insert into the batching structure
    * @param restaurantAddress the address of the restaurant associated with these batches
+   *
+   * @throws IllegalStateException if initialTime <= cookedTime <= deliveryTime is violated, if the
+   *         order is not in the COOKING state or is already past its cooked time when added, or if
+   *         the order cannot be routed to a valid delivery location
    */
   public void addOrder(final List<TentativeBatch> batches, final Order order,
       String restaurantAddress) {
+    Instant now = Instant.now();
     if (order.initialTime.isAfter(order.cookedTime)
         || order.cookedTime.isAfter(order.deliveryTime)) {
-      throw new IllegalStateException("Orders must have initialTime < cookedTime < deliveryTime");
+      throw new IllegalStateException(
+          "Must have initialTime <= cookedTime <= deliveryTime. Order id " + order.id + " failed");
+    }
+    if (order.state != State.COOKING || now.isAfter(order.cookedTime)) {
+      throw new IllegalStateException(
+          "Orders must be before their cooked time/be cooking when entering the batching algorithm, "
+              + "failed for order id " + order.id);
     }
     Instant lastAllowedCookedTime;
     try {
@@ -200,7 +218,7 @@ public class BatchingAlgorithm {
       // Use invariant that order has already been added to db
       dbOrderService.removeOrder(order.id);
       throw new IllegalStateException(
-          "Could not add order id " + order.id + " to batching algorithm", e);
+          "Could not find a route from the restaurant to order id " + order.id, e);
     }
     if (order.cookedTime.isAfter(lastAllowedCookedTime)) {
       Order updatedOrder = fixDeliveryTime(order, lastAllowedCookedTime);

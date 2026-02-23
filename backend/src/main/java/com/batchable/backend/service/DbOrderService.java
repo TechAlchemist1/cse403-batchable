@@ -6,6 +6,7 @@ import com.batchable.backend.db.models.Batch;
 import com.batchable.backend.db.models.Order;
 import com.batchable.backend.websocket.OrderWebSocketPublisher;
 import java.sql.SQLException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -13,13 +14,11 @@ import org.springframework.stereotype.Service;
 /**
  * OrderService is part of the business logic layer.
  *
- * Responsibilities:
- *  - Enforce valid order lifecycle transitions
- *  - Protect domain invariants
- *  - Coordinate persistence and higher-level system behavior
+ * Responsibilities: - Enforce valid order lifecycle transitions - Protect domain invariants -
+ * Coordinate persistence and higher-level system behavior
  *
- * This service should be the ONLY component allowed to mutate Order state.
- * Controllers must call this service instead of modifying Orders directly.
+ * This service should be the ONLY component allowed to mutate Order state. Controllers must call
+ * this service instead of modifying Orders directly.
  */
 @Service
 public class DbOrderService {
@@ -28,10 +27,7 @@ public class DbOrderService {
   private final BatchDAO batchDAO;
   private final OrderWebSocketPublisher publisher;
 
-  public DbOrderService(
-      OrderDAO orderDAO,
-      BatchDAO batchDAO,
-      OrderWebSocketPublisher publisher) {
+  public DbOrderService(OrderDAO orderDAO, BatchDAO batchDAO, OrderWebSocketPublisher publisher) {
     this.orderDAO = orderDAO;
     this.batchDAO = batchDAO;
     this.publisher = publisher;
@@ -40,18 +36,15 @@ public class DbOrderService {
   /**
    * Creates a new order in the system.
    *
-   * Responsibilities:
-   *  - Validate required fields (restaurant, items, timestamps, etc.)
-   *  - Ensure order does not already exist
-   *  - Initialize default state COOKING
-   *  - Persist to database
+   * Responsibilities: - Validate required fields (restaurant, items, timestamps, etc.) - Ensure
+   * order does not already exist - Initialize default state COOKING - Persist to database
    *
-   * Errors:
-   *  - IllegalArgumentException if required fields are missing or invalid
-   *  - IllegalStateException if order ID already exists
-   *  - RuntimeException (or custom DataAccessException) if persistence fails
+   * Errors: - IllegalArgumentException if required fields are missing or invalid -
+   * IllegalStateException if order ID already exists - RuntimeException (or custom
+   * DataAccessException) if persistence fails
    */
   public long createOrder(Order order) {
+    Instant now = Instant.now();
     if (order == null) {
       throw new IllegalArgumentException("order is required");
     }
@@ -64,8 +57,16 @@ public class DbOrderService {
       throw new IllegalArgumentException("destination is required");
     }
 
-    if (order.initialTime == null) {
-      throw new IllegalArgumentException("initialTime is required");
+    if (order.cookedTime == null) {
+      throw new IllegalArgumentException("cookedTime is required");
+    }
+
+    if (order.deliveryTime == null) {
+      throw new IllegalArgumentException("deliveryTime is required");
+    }
+
+    if (now.isAfter(order.cookedTime) || order.cookedTime.isAfter(order.deliveryTime)) {
+      throw new IllegalArgumentException("Must have initialTime <= cookedTime <= deliveryTime");
     }
 
     // Allow frontend dummy id (negative or 0)
@@ -74,18 +75,9 @@ public class DbOrderService {
     }
 
     try {
-      // batch ids initialized to null then filled in later 
-      long id = orderDAO.createOrder(
-          order.restaurantId,
-          order.destination,
-          order.itemNamesJson,
-          order.initialTime,
-          order.deliveryTime,
-          order.cookedTime,
-          Order.State.COOKING,
-          order.highPriority,
-          null
-      );
+      // batch ids initialized to null then filled in later
+      long id = orderDAO.createOrder(order.restaurantId, order.destination, order.itemNamesJson,
+          now, order.deliveryTime, order.cookedTime, Order.State.COOKING, order.highPriority, null);
 
       publisher.refreshOrderData(order.restaurantId);
       return id;
@@ -96,23 +88,15 @@ public class DbOrderService {
   }
 
   /**
-   * Advances the state of the specified order by exactly one valid step
-   * in the lifecycle.
-   * E.g. COOKING -> COOKED
+   * Advances the state of the specified order by exactly one valid step in the lifecycle. E.g.
+   * COOKING -> COOKED
    *
-   * Responsibilities:
-   *  - Retrieve order from persistence layer
-   *  - Determine the next valid state
-   *  - Validate transition is allowed
-   *  - Persist updated state
-   *  - Trigger any necessary downstream effects (e.g., batching, notifications)
+   * Responsibilities: - Retrieve order from persistence layer - Determine the next valid state -
+   * Validate transition is allowed - Persist updated state - Trigger any necessary downstream
+   * effects (e.g., batching, notifications)
    *
-   * Errors:
-   *  - IllegalArgumentException if orderId does not exist
-   *  - IllegalStateException if:
-   *      • Order is already DELIVERED
-   *      • No valid next state exists
-   *  - RuntimeException if persistence fails
+   * Errors: - IllegalArgumentException if orderId does not exist - IllegalStateException if: •
+   * Order is already DELIVERED • No valid next state exists - RuntimeException if persistence fails
    */
   public void advanceOrderState(long orderId) {
     Order order = getOrder(orderId);
@@ -127,12 +111,14 @@ public class DbOrderService {
       throw new IllegalStateException("No valid next state exists");
     }
 
+    if (next == Order.State.COOKED) {
+      updateOrderCookedTime(orderId, Instant.now());
+    } else if (next == Order.State.DELIVERED) {
+      updateOrderDeliveryTime(orderId, Instant.now());
+    }
+
     try {
       orderDAO.updateOrderState(orderId, next);
-
-      if (next == Order.State.DELIVERED) {
-        orderDAO.updateOrderDeliveryTime(orderId, Instant.now());
-      }
 
       // Push update to frontend via WebSocket
       publisher.refreshOrderData(order.restaurantId);
@@ -158,25 +144,15 @@ public class DbOrderService {
   /**
    * Updates the cooked time of an order.
    *
-   * Domain Invariants:
-   *  - cookedTime must not be null
-   *  - cookedTime must not be before order.initialTime
-   *  - cookedTime must not be in the far past relative to now
+   * Domain Invariants: - cookedTime must not be null - cookedTime must not be before
+   * order.initialTime - cookedTime must not be in the far past relative to now
    *
-   * Responsibilities:
-   *  - Retrieve order
-   *  - Validate temporal constraints
-   *  - Persist update
-   *  - Potentially trigger batching recalculation if READY state depends on it
+   * Responsibilities: - Retrieve order - Validate temporal constraints - Persist update -
+   * Potentially trigger batching recalculation if READY state depends on it
    *
-   * Errors:
-   *  - IllegalArgumentException if:
-   *      • orderId does not exist
-   *      • cookedTime is null
-   *      • cookedTime < order.initialTime
-   *  - IllegalStateException if:
-   *      • Order is already DELIVERED
-   *  - RuntimeException if persistence fails
+   * Errors: - IllegalArgumentException if: • orderId does not exist • cookedTime is null •
+   * cookedTime < order.initialTime - IllegalStateException if: • Order is already DELIVERED -
+   * RuntimeException if persistence fails
    */
   public void updateOrderCookedTime(long orderId, Instant cookedTime) {
     if (cookedTime == null) {
@@ -185,8 +161,9 @@ public class DbOrderService {
 
     Order order = getOrder(orderId);
 
-    if (order.state == Order.State.DELIVERED) {
-      throw new IllegalStateException("Cannot update delivered order");
+    if (order.state.getRank() >= Order.State.COOKED.getRank()) {
+      throw new IllegalStateException(
+          "Cannot update cooked time after order state has passed COOKED. Order id " + order.id);
     }
 
     if (cookedTime.isBefore(order.initialTime)) {
@@ -207,23 +184,14 @@ public class DbOrderService {
   /**
    * Updates the delivery time of an order.
    *
-   * Domain Invariants:
-   *  - deliveryTime must not be null
-   *  - deliveryTime must not be before order.initialTime
-   *  - deliveryTime must not be in the far past relative to now
+   * Domain Invariants: - deliveryTime must not be null - deliveryTime must not be before
+   * order.initialTime - deliveryTime must not be in the far past relative to now
    *
-   * Responsibilities:
-   *  - Retrieve order
-   *  - Validate temporal constraints
-   *  - Persist update
-   *  - Potentially trigger batching recalculation if READY state depends on it
+   * Responsibilities: - Retrieve order - Validate temporal constraints - Persist update -
+   * Potentially trigger batching recalculation if READY state depends on it
    *
-   * Errors:
-   *  - IllegalArgumentException if:
-   *      • orderId does not exist
-   *      • deliveryTime is null
-   *      • deliveryTime < order.cookedTime
-   *  - RuntimeException if persistence fails
+   * Errors: - IllegalArgumentException if: • orderId does not exist • deliveryTime is null •
+   * deliveryTime < order.cookedTime - RuntimeException if persistence fails
    */
   public void updateOrderDeliveryTime(long orderId, Instant deliveryTime) {
     if (deliveryTime == null) {
@@ -234,6 +202,11 @@ public class DbOrderService {
 
     if (deliveryTime.isBefore(order.cookedTime)) {
       throw new IllegalArgumentException("deliveryTime cannot be before cookedTime");
+    }
+
+    if (order.state.getRank() >= Order.State.DELIVERED.getRank()) {
+      throw new IllegalStateException(
+          "Cannot update cooked time after order state has passed DELIVERED. Order id " + order.id);
     }
 
     try {
@@ -252,27 +225,17 @@ public class DbOrderService {
   /**
    * Resets the specified order to behave as if it were newly created.
    *
-   * Behavior:
-   *  - Reset lifecycle state to initial COOKING
-   *  - Clear delivery/batch assignment
-   *  - Mark highPriority = true
-   *  - Preserve identity and restaurant association
+   * Behavior: - Reset lifecycle state to initial COOKING - Clear delivery/batch assignment - Mark
+   * highPriority = true - Preserve identity and restaurant association
    *
-   * Use case:
-   *  - Order was incorrect or rejected and must be remade
+   * Use case: - Order was incorrect or rejected and must be remade
    *
-   * Responsibilities:
-   *  - Validate order exists
-   *  - Ensure order is eligible for remake (e.g., DELIVERED may not be allowed)
-   *  - Reset state fields consistently
-   *  - Persist update
-   *  - Trigger re-batching logic
+   * Responsibilities: - Validate order exists - Ensure order is eligible for remake (e.g.,
+   * DELIVERED may not be allowed) - Reset state fields consistently - Persist update - Trigger
+   * re-batching logic
    *
-   * Errors:
-   *  - IllegalArgumentException if orderId does not exist
-   *  - IllegalStateException if:
-   *      • Order has been permanently finalized
-   *  - RuntimeException if persistence fails
+   * Errors: - IllegalArgumentException if orderId does not exist - IllegalStateException if: •
+   * Order has been permanently finalized - RuntimeException if persistence fails
    */
   public void remakeOrder(long orderId) {
     Order order = getOrder(orderId);
@@ -280,10 +243,14 @@ public class DbOrderService {
     if (order.state == Order.State.DELIVERED) {
       throw new IllegalStateException("Delivered orders cannot be remade");
     }
+    
+    Instant newInitialTime = Instant.now();
+    Instant newCookedTime = newInitialTime.plus(Duration.between(order.initialTime, order.cookedTime));
+    Instant newDeliveryTime = newInitialTime.plus(Duration.between(order.initialTime, order.deliveryTime));
 
     try {
-      orderDAO.remakeOrder(orderId, Order.State.COOKING, true);
-
+      orderDAO.remakeOrder(orderId, Order.State.COOKING, newInitialTime, 
+                           newDeliveryTime, newCookedTime, true);
       // Push update to frontend via WebSocket
       publisher.refreshOrderData(order.restaurantId);
 
@@ -295,8 +262,7 @@ public class DbOrderService {
   /**
    * Retrieves the order by ID.
    *
-   * Errors:
-   *  - IllegalArgumentException if orderId does not exist
+   * Errors: - IllegalArgumentException if orderId does not exist
    */
   public Order getOrder(long orderId) {
     if (orderId <= 0) {
@@ -314,8 +280,7 @@ public class DbOrderService {
   /**
    * Returns the Batch corresponding to the given batchId.
    *
-   * Errors:
-   *  - IllegalArgumentException if batchId does not exist
+   * Errors: - IllegalArgumentException if batchId does not exist
    */
   public Batch getBatch(long batchId) {
     if (batchId <= 0) {
@@ -333,15 +298,12 @@ public class DbOrderService {
   /**
    * Creates a new batch in the system.
    *
-   * Responsibilities:
-   *  - Validate required fields
-   *  - Ensure batch does not already exist
-   *  - Persist to database
+   * Responsibilities: - Validate required fields - Ensure batch does not already exist - Persist to
+   * database
    *
-   * Errors:
-   *  - IllegalArgumentException if required fields are missing or invalid
-   *  - IllegalStateException if batch ID already exists
-   *  - RuntimeException (or custom DataAccessException) if persistence fails
+   * Errors: - IllegalArgumentException if required fields are missing or invalid -
+   * IllegalStateException if batch ID already exists - RuntimeException (or custom
+   * DataAccessException) if persistence fails
    */
   public long createBatch(Batch batch) {
     if (batch == null) {
@@ -374,13 +336,9 @@ public class DbOrderService {
     }
 
     try {
-      // batch ids initialized to null then filled in later 
-      long id = batchDAO.createBatch(
-          batch.driverId,
-          batch.route,
-          batch.dispatchTime,
-          batch.expectedCompletionTime
-      );
+      // batch ids initialized to null then filled in later
+      long id = batchDAO.createBatch(batch.driverId, batch.route, batch.dispatchTime,
+          batch.expectedCompletionTime);
       return id;
     } catch (SQLException e) {
       throw new RuntimeException("Failed to create batch", e);
@@ -390,8 +348,7 @@ public class DbOrderService {
   /**
    * Returns all orders belonging to a specific batch.
    *
-   * Errors:
-   *  - IllegalArgumentException if batchId does not exist
+   * Errors: - IllegalArgumentException if batchId does not exist
    */
   public List<Order> getBatchOrders(long batchId) {
     getBatch(batchId); // validate exists
@@ -407,22 +364,15 @@ public class DbOrderService {
   /**
    * Removes an order from the system.
    *
-   * Domain Rules:
-   *  - Delivered orders may not be removable
-   *  - Removing an order may require batch recalculation
+   * Domain Rules: - Delivered orders may not be removable - Removing an order may require batch
+   * recalculation
    *
-   * Responsibilities:
-   *  - Validate order exists
-   *  - Ensure removal is allowed
-   *  - Remove from persistence
-   *  - Trigger downstream updates if batch was affected
+   * Responsibilities: - Validate order exists - Ensure removal is allowed - Remove from persistence
+   * - Trigger downstream updates if batch was affected
    *
-   * Errors:
-   *  - IllegalArgumentException if orderId does not exist
-   *  - IllegalStateException if:
-   *      • Order is already DELIVERED
-   *      • Order is in a finalized state
-   *  - RuntimeException if persistence fails
+   * Errors: - IllegalArgumentException if orderId does not exist - IllegalStateException if: •
+   * Order is already DELIVERED • Order is in a finalized state - RuntimeException if persistence
+   * fails
    */
   public void removeOrder(long orderId) {
     Order order = getOrder(orderId);
@@ -441,36 +391,24 @@ public class DbOrderService {
     }
   }
 
-  /**   
-  Assigns an order to a batch by setting its batchId.*
-  Domain Invariants:
-  orderId must correspond to an existing order
-  batchId must correspond to an existing batch
-  An order may belong to at most one batch at a time
-  *
-  Behavior:
-  Updates the order’s batchId to the specified batch
-  Overwrites any existing batch assignment
-  *
-  Responsibilities:
-  Retrieve the order
-  Validate the target batch exists
-  Update the order’s batch association
-  Persist the change
-  Notify downstream consumers (e.g., frontend, batching observers)
-  *
-  Errors:
-  IllegalArgumentException if:
-  • orderId does not exist
-  • batchId does not exist
-  IllegalStateException if:
-  • Order is already DELIVERED
-  • Order is in a state that forbids reassignment
-  RuntimeException if persistence fails
-  *
-  @param orderId the id of the order to assign
-  @param batchId the id of the batch to associate with the order
-  */
+  /**
+   * Assigns an order to a batch by setting its batchId.* Domain Invariants: orderId must correspond
+   * to an existing order batchId must correspond to an existing batch An order may belong to at
+   * most one batch at a time
+   *
+   * Behavior: Updates the order’s batchId to the specified batch Overwrites any existing batch
+   * assignment
+   *
+   * Responsibilities: Retrieve the order Validate the target batch exists Update the order’s batch
+   * association Persist the change Notify downstream consumers (e.g., frontend, batching observers)
+   *
+   * Errors: IllegalArgumentException if: • orderId does not exist • batchId does not exist
+   * IllegalStateException if: • Order is already DELIVERED • Order is in a state that forbids
+   * reassignment RuntimeException if persistence fails
+   *
+   * @param orderId the id of the order to assign
+   * @param batchId the id of the batch to associate with the order
+   */
   public void setOrderBatchId(long orderId, long batchId) {
     // Validate order exists + fetch current state
     Order order = getOrder(orderId);
@@ -487,7 +425,8 @@ public class DbOrderService {
 
     try {
       boolean ok = orderDAO.updateOrderBatchId(orderId, batchId);
-      if (!ok) throw new IllegalArgumentException("Order not found: " + orderId);
+      if (!ok)
+        throw new IllegalArgumentException("Order not found: " + orderId);
 
 
       // Push update to frontend via WebSocket

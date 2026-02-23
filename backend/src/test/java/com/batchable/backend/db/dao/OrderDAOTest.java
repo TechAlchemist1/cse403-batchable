@@ -16,6 +16,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+
 public class OrderDAOTest extends PostgresTestBase {
 
   private TestDataSource ds;
@@ -175,7 +176,7 @@ public class OrderDAOTest extends PostgresTestBase {
             delivered, cooked,
             Order.State.DELIVERED, false, null);
 
-    assertTrue(orderDAO.remakeOrder(id, Order.State.COOKING, true));
+    assertTrue(orderDAO.remakeOrder(id, Order.State.COOKING, Instant.now(), null, null, true));
 
     Order o = orderDAO.getOrder(id).orElseThrow();
     assertEquals(Order.State.COOKING, o.state);

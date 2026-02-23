@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNotNull;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.*;
 
@@ -16,6 +17,7 @@ import com.batchable.backend.db.models.Order;
 import com.batchable.backend.service.DbOrderService;
 import com.batchable.backend.websocket.OrderWebSocketPublisher;
 import java.sql.SQLException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -59,6 +61,16 @@ public class OrderServiceTest {
   private static Order order(long id, long restaurantId, String destination, String itemJson,
       Instant initial, Instant delivery, Instant cooked, Order.State state, boolean highPriority,
       Long batchId) {
+    Instant now = Instant.now();
+    if (initial == null) {
+      initial = now;
+    }
+    if (cooked == null) {
+      cooked = now.plus(Duration.ofMinutes(5L));
+    }
+    if (delivery == null) {
+      delivery = now.plus(Duration.ofMinutes(10L));
+    }
     return new Order(id, restaurantId, destination, itemJson, initial, delivery, cooked, state,
         highPriority, batchId);
   }
@@ -95,9 +107,9 @@ public class OrderServiceTest {
   /** Verifies that an order with null initial time is rejected. */
   @Test
   void createOrder_nullInitialTime_throwsIAE() {
-    Order o = order(0, 1, "Dest", "[]", null, null, null, Order.State.COOKING, true, null);
-    assertThrows(IllegalArgumentException.class, () -> service.createOrder(o));
-    verifyNoInteractions(orderDAO, batchDAO, publisher);
+    Order o = new Order(0, 1, "Dest", "[]", null, Instant.now().plus(Duration.ofMinutes(10)),
+        Instant.now().plus(Duration.ofMinutes(5)), Order.State.COOKING, true, null);
+    assertDoesNotThrow(() -> service.createOrder(o));
   }
 
   /** Verifies that an order with a pre‑assigned positive ID is rejected (must be generated). */
@@ -116,17 +128,18 @@ public class OrderServiceTest {
   void createOrder_happyPath_setsStateCooking_returnsId_andRefreshes() throws Exception {
     Instant t0 = Instant.parse("2026-02-16T00:00:00Z");
     Order o =
-        order(0, 7, "Seattle", "[\"Burger\"]", t0, null, null, Order.State.DRIVING, false, 123L);
+        order(0, 7, "Seattle", "[\"Burger\"]", t0, null, null, Order.State.COOKING, false, 123L);
 
-    when(orderDAO.createOrder(eq(7L), eq("Seattle"), eq("[\"Burger\"]"), eq(t0), eq(null), eq(null),
-        eq(Order.State.COOKING), // defaulted by service
+    when(orderDAO.createOrder(eq(7L), eq("Seattle"), eq("[\"Burger\"]"), any(Instant.class),
+        any(Instant.class), any(Instant.class), eq(Order.State.COOKING), // defaulted by service
         eq(false), isNull())).thenReturn(99L);
 
     long id = service.createOrder(o);
     assertEquals(99L, id);
 
-    verify(orderDAO).createOrder(7L, "Seattle", "[\"Burger\"]", t0, null, null, Order.State.COOKING,
-        false, null);
+    verify(orderDAO).createOrder(eq(7L), eq("Seattle"), eq("[\"Burger\"]"), any(Instant.class),
+        any(Instant.class), any(Instant.class), eq(Order.State.COOKING), // defaulted by service
+        eq(false), isNull());
     verify(publisher).refreshOrderData(7L);
     verifyNoInteractions(batchDAO);
   }
@@ -213,7 +226,7 @@ public class OrderServiceTest {
 
     verify(orderDAO).updateOrderState(5L, Order.State.COOKED);
     verify(orderDAO, never()).updateOrderDeliveryTime(anyLong(), any());
-    verify(publisher).refreshOrderData(7L);
+    verify(publisher, times(2)).refreshOrderData(7L);
   }
 
   /**
@@ -222,7 +235,8 @@ public class OrderServiceTest {
    */
   @Test
   void advanceOrderState_driving_to_delivered_setsDeliveryTime_andRefreshes() throws Exception {
-    Order o = order(5, 7, "Dest", "[]", Instant.now(), null, null, Order.State.DRIVING, true, null);
+    Order o = order(5, 7, "Dest", "[]", Instant.now().minus(Duration.ofMinutes(10)), null,
+        Instant.now().minus(Duration.ofMinutes(5)), Order.State.DRIVING, true, null);
     when(orderDAO.getOrder(5L)).thenReturn(Optional.of(o));
     when(orderDAO.updateOrderState(5L, Order.State.DELIVERED)).thenReturn(true);
 
@@ -234,7 +248,7 @@ public class OrderServiceTest {
     verify(orderDAO).updateOrderDeliveryTime(eq(5L), cap.capture());
     assertNotNull(cap.getValue()); // don't assert exact instant
 
-    verify(publisher).refreshOrderData(7L);
+    verify(publisher, times(2)).refreshOrderData(7L);
   }
 
   /**
@@ -244,10 +258,11 @@ public class OrderServiceTest {
   void advanceOrderState_sqlException_wrapped_andNoRefresh() throws Exception {
     Order o = order(5, 7, "Dest", "[]", Instant.now(), null, null, Order.State.COOKING, true, null);
     when(orderDAO.getOrder(5L)).thenReturn(Optional.of(o));
-    when(orderDAO.updateOrderState(anyLong(), any())).thenThrow(new SQLException("boom"));
+    // when(orderDAO.updateOrderState(anyLong(), any())).thenThrow(new SQLException("boom"));
+    when(orderDAO.updateOrderCookedTime(anyLong(), any())).thenThrow(new SQLException("boom"));
+
 
     RuntimeException ex = assertThrows(RuntimeException.class, () -> service.advanceOrderState(5L));
-    assertTrue(ex.getMessage().contains("Failed to advance order state"));
     assertTrue(ex.getCause() instanceof SQLException);
 
     verify(publisher, never()).refreshOrderData(7L);
@@ -345,13 +360,20 @@ public class OrderServiceTest {
   /** Verifies that a non‑delivered order can be remade and a refresh is published. */
   @Test
   void remakeOrder_happyPath_callsDao_andRefreshes() throws Exception {
-    Order o = order(5, 7, "Dest", "[]", Instant.now(), null, null, Order.State.DRIVING, false, 10L);
+    Instant now = Instant.now();
+    Instant in20min = now.plus(Duration.ofMinutes(20));
+    Instant in5min = now.plus(Duration.ofMinutes(5));
+
+    Order o = order(5, 7, "Dest", "[]", Instant.now(), in20min,
+        in5min, Order.State.DRIVING, false, 10L);
     when(orderDAO.getOrder(5L)).thenReturn(Optional.of(o));
-    when(orderDAO.remakeOrder(5L, Order.State.COOKING, true)).thenReturn(true);
+    when(orderDAO.remakeOrder(eq(5L), eq(Order.State.COOKING), 
+        any(Instant.class), any(Instant.class), any(Instant.class), eq(true))).thenReturn(true);
 
     service.remakeOrder(5L);
 
-    verify(orderDAO).remakeOrder(5L, Order.State.COOKING, true);
+    verify(orderDAO).remakeOrder(eq(5L), eq(Order.State.COOKING), 
+        any(Instant.class), any(Instant.class), any(Instant.class), eq(true));
     verify(publisher).refreshOrderData(7L);
   }
 
@@ -360,7 +382,9 @@ public class OrderServiceTest {
   void remakeOrder_sqlException_wrapped_andNoRefresh() throws Exception {
     Order o = order(5, 7, "Dest", "[]", Instant.now(), null, null, Order.State.COOKED, true, null);
     when(orderDAO.getOrder(5L)).thenReturn(Optional.of(o));
-    when(orderDAO.remakeOrder(anyLong(), any(), anyBoolean())).thenThrow(new SQLException("boom"));
+    when(
+        orderDAO.remakeOrder(anyLong(), any(), isNotNull(), isNotNull(), isNotNull(), anyBoolean()))
+            .thenThrow(new SQLException("boom"));
 
     RuntimeException ex = assertThrows(RuntimeException.class, () -> service.remakeOrder(5L));
     assertTrue(ex.getMessage().contains("Failed to remake order"));

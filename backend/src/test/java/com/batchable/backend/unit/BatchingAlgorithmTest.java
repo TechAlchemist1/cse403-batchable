@@ -1,6 +1,7 @@
 package com.batchable.backend.unit;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
@@ -14,7 +15,7 @@ import com.batchable.backend.service.RouteService;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
+import org.mockito.Mock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -34,7 +35,9 @@ import java.util.Set;
  * invariants of the batch structure.
  */
 class BatchingAlgorithmTest {
+  @Mock
   private RouteService mockRouteService;
+  @Mock
   private DbOrderService mockDbOrderService;
   private BatchingAlgorithm batchingAlgorithm;
   private int SECONDS_TO_HAND_DELIVER;
@@ -357,13 +360,17 @@ class BatchingAlgorithmTest {
 
     List<TentativeBatch> batches = new ArrayList<>();
     Order order1 =
-        getOrder(futureMinutes(0), futureMinutes(0), futureMinutes(1 + CEIL_MINS_TO_HAND_DELIVER));
+        getOrder(futureMinutes(0), futureMinutes(1), futureMinutes(1 + CEIL_MINS_TO_HAND_DELIVER));
     Order order2 =
-        getOrder(futureMinutes(0), futureMinutes(0), futureMinutes(1 + CEIL_MINS_TO_HAND_DELIVER)); // same
-                                                                                                    // delivery
-                                                                                                    // time
-
+        getOrder(futureMinutes(0), futureMinutes(1), futureMinutes(1 + CEIL_MINS_TO_HAND_DELIVER)); // same
+    
+    Order updatedOrder1 = 
+      getOrder(futureMinutes(0), futureMinutes(1), futureMinutes(2 + CEIL_MINS_TO_HAND_DELIVER));
+    Order updatedOrder2 = 
+        getOrder(futureMinutes(0), futureMinutes(1), futureMinutes(2 + CEIL_MINS_TO_HAND_DELIVER));
+    when(mockDbOrderService.getOrder(anyLong())).thenReturn(updatedOrder1);                                                                                 // time
     batchingAlgorithm.addOrder(batches, order1, restaurantAddress);
+    when(mockDbOrderService.getOrder(anyLong())).thenReturn(updatedOrder2);                                                                                 // time
     batchingAlgorithm.addOrder(batches, order2, restaurantAddress);
 
     assertEquals(2, batches.size(),
