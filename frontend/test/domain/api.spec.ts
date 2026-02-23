@@ -338,6 +338,13 @@ describe('/order endpoint', () => {
     expect(readback?.itemNames).toEqual(original?.itemNames);
   });
 
+  it('can fail to remake a non-existent order', async () => {
+    const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());
+    const order = await checkedCreate(orderApi, getFakeOrder(restaurant));
+    expect(await orderApi.delete(order)).toBe(true);
+    expect(await orderApi.remake(order)).toBe(false);
+  });
+
   it('advances when advanced', async () => {
     await tryAdvanceOrder('cooking', 'cooked', true);
   });
@@ -345,5 +352,23 @@ describe('/order endpoint', () => {
   it("doesn't advance when >= cooked", async () => {
     await tryAdvanceOrder('cooked', 'driving', false);
     await tryAdvanceOrder('driving', 'delivered', false);
+  });
+
+  it('can update cooked time', async () => {
+    const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());
+    const order = await checkedCreate(orderApi, getFakeOrder(restaurant));
+    const cookedTime = new Date(Date.now() + 1e3);
+    const updated = await orderApi.updateCookedTime(order, cookedTime);
+    expect(updated).toBe(true);
+    expect((await orderApi.read(order))?.cookedTime).toEqual(cookedTime);
+  });
+
+  it('can fail to update cooked time', async () => {
+    const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());
+    const order = await checkedCreate(orderApi, getFakeOrder(restaurant));
+    expect(await orderApi.delete(order)).toBe(true);
+    const cookedTime = new Date(Date.now() + 1e3);
+    const updated = await orderApi.updateCookedTime(order, cookedTime);
+    expect(updated).toBe(false);
   });
 });
