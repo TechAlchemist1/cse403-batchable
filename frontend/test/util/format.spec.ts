@@ -20,9 +20,8 @@ describe('time interval formatting', () => {
 
 describe('date time formatting', () => {
   it('follows the toString() format', () => {
-    expect(formatDateTime(new Date('9:25 pm, 1/23/25 PST'))).toBe(
-      'Thu Jan 23 2025 21:25:00 GMT-0800 (Pacific Standard Time)',
-    );
+    const date = new Date('9:25 pm, 1/23/25 PST');
+    expect(formatDateTime(date)).toBe(date.toString());
   });
 });
 
