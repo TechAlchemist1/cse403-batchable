@@ -1,9 +1,10 @@
 import {fakeId, type Order} from '~/domain/objects';
 import {type ModalState} from '../Modal';
-import {useContext} from 'react';
+import {useContext, useEffect, useState} from 'react';
 import {RestaurantContext} from '../RestaurantProvider';
 import FormField from '../FormField';
 import FormModal from '../FormModal';
+import MenuItemSelector from '../MenuItemSelector';
 import {MS_PER_MINUTE} from '~/util/time';
 import {orderApi} from '~/api/endpoints/order';
 
@@ -13,15 +14,29 @@ interface Props {
 
 export default function AddOrderModal({modal}: Props) {
   const restaurant = useContext(RestaurantContext);
+  const [selectedItemNames, setSelectedItemNames] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!modal.open) {
+      setSelectedItemNames([]);
+    }
+  }, [modal.open]);
 
   const addOrder = async (data: {
     address: string;
-    items: string;
     cookTime: string;
     deliverTime: string;
   }) => {
     if (!restaurant) {
       alert("You aren't logged in");
+      return;
+    }
+
+    const itemNames = selectedItemNames
+      .map(name => name.trim())
+      .filter(name => name.length > 0);
+    if (itemNames.length === 0) {
+      alert('Select at least one menu item');
       return;
     }
 
@@ -44,7 +59,7 @@ export default function AddOrderModal({modal}: Props) {
       deliveryTime,
       currentBatch: null,
       highPriority: false,
-      itemNames: data.items.split(',').map(name => name.trim()),
+      itemNames,
       state: 'cooking',
     };
 
@@ -68,12 +83,9 @@ export default function AddOrderModal({modal}: Props) {
         placeholder="123 Batch St"
         required
       />
-      <FormField
-        label="Item Name(s)"
-        type="text"
-        name="items"
-        placeholder="Tiramisu, Shrimp Fried Rice, ..."
-        required
+      <MenuItemSelector
+        restaurant={restaurant}
+        onItemsChange={setSelectedItemNames}
       />
       <FormField
         label="Prep Time (min)"

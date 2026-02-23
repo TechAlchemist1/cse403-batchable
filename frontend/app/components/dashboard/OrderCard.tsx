@@ -15,7 +15,7 @@ export default function OrderCard({order}: Props) {
   const deliverTime = formatTimeInterval(
     order.deliveryTime.getTime() - Date.now(),
   );
-  const items = order.itemNames.join(', ');
+  // const items = order.itemNames.join(', ');
 
   return (
     <>
@@ -25,7 +25,7 @@ export default function OrderCard({order}: Props) {
             {formatOrderName(order)}
           </p>
           <p className="text-sm text-white-500">{order.destination.address}</p>
-          <p className="text-sm text-grey-500">{items}</p>
+          {/* <p className="text-sm text-grey-500">{items}</p> */}
           <p className="text-sm text-gray-500">
             Prepared {prepTime} • Delivered {deliverTime}
           </p>

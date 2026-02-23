@@ -15,7 +15,7 @@ describe('Home Dashboard', () => {
     render(<HomeStub />);
     fireEvent.click(screen.getByRole('button', {name: /\+ Add New Order/i}));
     expect(screen.getByText(/Customer Address/i)).toBeInTheDocument();
-    expect(screen.getByText(/Item Name\(s\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Menu Items$/i)).toBeInTheDocument();
     expect(screen.getByText(/Prep Time \(min\)/i)).toBeInTheDocument();
     expect(screen.getByText(/Delivery Time \(min\)/i)).toBeInTheDocument();
     expect(
