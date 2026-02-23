@@ -7,7 +7,7 @@ import {MS_PER_MINUTE} from './time';
  * @returns A more human-readable version of the phone number
  */
 export function formatPhoneNumber(phoneNumber: PhoneNumber): string {
-  const match = phoneNumber.compact.match(/(\d{3})(\d{3})(\d{4})/);
+  const match = phoneNumber.compact.match(/^(\d{3})(\d{3})(\d{4})$/);
   if (!match) return phoneNumber.compact;
   const [, a, b, c] = match;
   return `(${a}) ${b}-${c}`;
