@@ -74,7 +74,11 @@ public class BatchingManager {
   /** Initializes the managers corresponding to pre-populated data */
   @PostConstruct
   private void initialize() {
-    dbOrderService.removeAllUnfinishedBatches();
+    String ciEnv = System.getenv("CI"); // GitHub Actions automatically sets CI=true
+    if (!"true".equalsIgnoreCase(ciEnv)) {
+        // this causes issue in CI because the db is not set up
+        dbOrderService.removeAllUnfinishedBatches();
+    }
     List<Restaurant> restaurants = restaurantService.getAllRestaurants();
     for (Restaurant restaurant : restaurants) {
       addManager(restaurant.id);
