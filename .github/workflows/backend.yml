@@ -25,6 +25,13 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
           cache: maven
+      - name: Debug env vars presence
+        run: |
+          echo "GOOGLE_ROUTES_API_KEY set? -> ${GOOGLE_ROUTES_API_KEY:+YES}"
+          echo "TWILIO_ACCOUNT_SID set? -> ${TWILIO_ACCOUNT_SID:+YES}"
+          echo "TWILIO_AUTH_TOKEN set? -> ${TWILIO_AUTH_TOKEN:+YES}"
+          echo "TWILIO_PHONE_NUMBER set? -> ${TWILIO_PHONE_NUMBER:+YES}"
+          echo "TWILIO_DRIVER_PHONE_NUMBER set? -> ${TWILIO_DRIVER_PHONE_NUMBER:+YES}"
       - name: Build project
         run: ./mvnw -B package -DskipTests
 
