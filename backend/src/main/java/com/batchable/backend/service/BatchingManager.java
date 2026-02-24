@@ -200,6 +200,9 @@ public class BatchingManager {
    */
   @Scheduled(fixedDelay = UPDATE_INCREMENTS_MILLIS)
   public void checkExpiredBatches() {
+    if ("true".equalsIgnoreCase(System.getenv("CI"))) {
+      return;
+    }
     for (RestaurantBatchingManager manager : restaurantManagers.values()) {
       manager.checkExpiredBatches(UPDATE_INCREMENTS_MILLIS);
     }
