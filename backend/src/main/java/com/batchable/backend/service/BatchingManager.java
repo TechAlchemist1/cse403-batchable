@@ -72,15 +72,9 @@ public class BatchingManager {
   }
 
   /** Initializes the managers corresponding to pre-populated data */
-  // TODO: remove this once we have a way to test the batching manager without CI
   @PostConstruct
   private void initialize() {
-    String ciEnv = System.getenv("CI"); // GitHub Actions automatically sets CI=true
-    if (!"true".equalsIgnoreCase(ciEnv)) {
-      dbOrderService.removeAllUnfinishedBatches();
-    } else {
-      System.out.println("CI detected: skipping removeAllUnfinishedBatches()");
-    }
+    dbOrderService.removeAllUnfinishedBatches();
     List<Restaurant> restaurants = restaurantService.getAllRestaurants();
     for (Restaurant restaurant : restaurants) {
       addManager(restaurant.id);
@@ -200,9 +194,6 @@ public class BatchingManager {
    */
   @Scheduled(fixedDelay = UPDATE_INCREMENTS_MILLIS)
   public void checkExpiredBatches() {
-    if ("true".equalsIgnoreCase(System.getenv("CI"))) {
-      return;
-    }
     for (RestaurantBatchingManager manager : restaurantManagers.values()) {
       manager.checkExpiredBatches(UPDATE_INCREMENTS_MILLIS);
     }
