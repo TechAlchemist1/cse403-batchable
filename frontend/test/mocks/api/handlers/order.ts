@@ -1,4 +1,4 @@
-import {http, HttpResponse} from 'msw';
+import {http, HttpResponse, ws} from 'msw';
 import {
   asId,
   db,
@@ -10,6 +10,8 @@ import {
 import {isStateBefore, nextStateAfter, type Order} from '~/domain/objects';
 import * as json from '~/domain/json';
 import {StatusCodes} from 'http-status-codes';
+
+const refreshSocket = ws.link(endpoint('/topic/orders/:id', 'ws'));
 
 export const orderHandlers = [
   ...makeCrudHandlers('/order', db.orders, ['create', 'read', 'delete']),
@@ -60,5 +62,20 @@ export const orderHandlers = [
     );
 
     return noContent();
+  }),
+  refreshSocket.addEventListener('connection', async ({client}) => {
+    const changeListener = () => {
+      client.send('<<this should never matter>>');
+    };
+
+    // TODO: register handler for order changes
+    const handle = setInterval(() => {
+      changeListener();
+    }, 1500);
+
+    client.addEventListener('close', () => {
+      // TODO: unregister handler for order changes
+      clearInterval(handle);
+    });
   }),
 ];
