@@ -21,9 +21,10 @@ export const driverHandlers = [
     });
     return noContent();
   }),
-  http.put(endpoint('/driver/:id/batch'), req => {
-    const batch =
-      db.batches.findMatching('driver', asId<Driver>(req.params.id))[0] ?? null;
+  http.get(endpoint('/driver/:id/batch'), req => {
+    const id = asId<Driver>(req.params.id);
+    if (!db.drivers.get(id)) return notFound('/driver');
+    const batch = db.batches.findMatching('driver', id)[0] ?? null;
     return HttpResponse.json(batch);
   }),
 ];

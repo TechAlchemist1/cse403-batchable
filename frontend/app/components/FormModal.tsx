@@ -34,13 +34,15 @@ export default function FormModal<T extends FormData>({
   children,
 }: React.PropsWithChildren<Props<T>>) {
   const handleSubmit = (e: React.SubmitEvent<HTMLFormElement>) => {
+    e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const data = Object.fromEntries(formData) as T;
     apply(data);
+    state.setOpen(false);
   };
   return (
     <Modal state={state} title={title}>
-      <form onSubmit={handleSubmit} className="space-y-4" method="dialog">
+      <form onSubmit={handleSubmit} className="space-y-4">
         {children}
         <div className="mt-6 flex gap-3 w-full">
           <Button

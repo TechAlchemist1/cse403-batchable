@@ -1,4 +1,4 @@
-import {http} from 'msw';
+import {http, HttpResponse, ws} from 'msw';
 import {
   asId,
   db,
@@ -7,8 +7,11 @@ import {
   noContent,
   notFound,
 } from '../common';
-import {nextStateAfter, type Order} from '~/domain/objects';
+import {isStateBefore, nextStateAfter, type Order} from '~/domain/objects';
 import * as json from '~/domain/json';
+import {StatusCodes} from 'http-status-codes';
+
+const refreshSocket = ws.link(endpoint('/topic/orders/:id', 'ws'));
 
 export const orderHandlers = [
   ...makeCrudHandlers('/order', db.orders, ['create', 'read', 'delete']),
@@ -16,12 +19,15 @@ export const orderHandlers = [
     const order = db.orders.get(asId<Order>(req.params.id));
     if (!order) return notFound('order');
     const parsedState = json.order.field('state').parse(order.state);
-    if (parsedState !== 'delivered') {
-      db.orders.update({
-        ...order,
-        state: json.order.field('state').unparse(nextStateAfter(parsedState)),
+    if (!isStateBefore(parsedState, 'cooked')) {
+      return HttpResponse.text('Cannot advance past cooked', {
+        status: StatusCodes.BAD_REQUEST,
       });
     }
+    db.orders.update({
+      ...order,
+      state: json.order.field('state').unparse(nextStateAfter(parsedState)),
+    });
     return noContent();
   }),
   http.put(endpoint('/order/:id/cookedTime'), async req => {
@@ -56,5 +62,16 @@ export const orderHandlers = [
     );
 
     return noContent();
+  }),
+  refreshSocket.addEventListener('connection', async ({client}) => {
+    const changeListener = () => {
+      client.send('<<this should never matter>>');
+    };
+
+    db.orders.addEventListener('change', changeListener);
+
+    client.addEventListener('close', () => {
+      db.orders.removeEventListener('change', changeListener);
+    });
   }),
 ];

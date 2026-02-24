@@ -64,8 +64,6 @@ export function useLoader<T>(
     );
   }, [flag, ...dependencies]);
 
-  console.log(response, loaded);
-
   if (response.status === 'success') {
     return {
       reload,

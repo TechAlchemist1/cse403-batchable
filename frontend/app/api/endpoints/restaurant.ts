@@ -15,7 +15,7 @@ class RestaurantApi extends CrudApi<Restaurant> {
       );
       return drivers.map(json.driver.parse);
     } catch (err) {
-      console.error(`Cannot get drivers for restaurant; id=${id}`, err);
+      this.error(`Cannot get drivers for restaurant; id=${id}`, err);
       return null;
     }
   }
@@ -27,7 +27,7 @@ class RestaurantApi extends CrudApi<Restaurant> {
       );
       return orders.map(json.order.parse);
     } catch (err) {
-      console.error(`Cannot find orders for restaurant; id=${id}`, err);
+      this.error(`Cannot find orders for restaurant; id=${id}`, err);
       return null;
     }
   }
@@ -39,7 +39,7 @@ class RestaurantApi extends CrudApi<Restaurant> {
       );
       return menuItems.map(json.menuItem.parse);
     } catch (err) {
-      console.error(`Cannot get menu items for restaurant; id=${id}`, err);
+      this.error(`Cannot get menu items for restaurant; id=${id}`, err);
       return null;
     }
   }

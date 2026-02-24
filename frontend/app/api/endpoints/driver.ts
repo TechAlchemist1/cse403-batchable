@@ -15,19 +15,19 @@ class DriverApi extends CrudApi<Driver> {
       );
       return true;
     } catch (err) {
-      console.error(`Failed to change driver shift; id=${id}`, err);
+      this.error(`Failed to change driver shift; id=${id}`, err);
       return false;
     }
   }
   async getBatch({id}: Driver['id']) {
     try {
       const batch: json.JSONDomainObject<Batch> | null = await fetchJSON(
-        'PUT',
+        'GET',
         `${this.resource}/${id}/batch`,
       );
       return batch === null ? null : json.batch.parse(batch);
     } catch (err) {
-      console.error(`Failed to get driver batch; id=${id}`, err);
+      this.error(`Failed to get driver batch; id=${id}`, err);
       return null;
     }
   }

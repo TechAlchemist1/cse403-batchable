@@ -3,6 +3,7 @@ import '@testing-library/jest-dom/vitest';
 import {cleanup} from '@testing-library/react';
 import {afterAll, afterEach, beforeAll, vi} from 'vitest';
 import './mocks/auth0';
+import './mocks/crud_errors';
 import {server} from './mocks/api/server';
 import {resetMockDatabase} from './mocks/api/common';
 

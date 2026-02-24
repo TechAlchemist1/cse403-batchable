@@ -12,7 +12,7 @@ class OrderApi extends CrudApi<Order> {
       await fetchEndpoint('PUT', `${this.resource}/${id}/advance`);
       return true;
     } catch (err) {
-      console.error(`Failed to advance order state; id=${id}`, err);
+      this.error(`Failed to advance order state; id=${id}`, err);
       return false;
     }
   }
@@ -25,7 +25,7 @@ class OrderApi extends CrudApi<Order> {
       );
       return true;
     } catch (err) {
-      console.error(`Failed to update order cooked time; id=${id}`, err);
+      this.error(`Failed to update order cooked time; id=${id}`, err);
       return false;
     }
   }
@@ -34,7 +34,7 @@ class OrderApi extends CrudApi<Order> {
       await fetchEndpoint('PUT', `${this.resource}/${id}/remake`);
       return true;
     } catch (err) {
-      console.error(`Failed to remake order; id=${id}`, err);
+      this.error(`Failed to remake order; id=${id}`, err);
       return false;
     }
   }

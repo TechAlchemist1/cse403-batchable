@@ -15,7 +15,8 @@ class BatchApi extends CrudApi<Batch> {
       );
       return orders.map(json.order.parse);
     } catch (err) {
-      console.error(`Cannot get orders for batch; id=${id}`, err);
+      this.error(`Cannot get orders for batch; id=${id}`, err);
+      return null;
     }
   }
 }

@@ -1,9 +1,12 @@
+import {db} from 'test/mocks/api/common';
 import {describe, it, expect} from 'vitest';
 import {CrudApi} from '~/api/crud';
+import {batchApi} from '~/api/endpoints/batch';
 import {driverApi} from '~/api/endpoints/driver';
 import {menuApi} from '~/api/endpoints/menu';
 import {orderApi} from '~/api/endpoints/order';
 import {restaurantApi} from '~/api/endpoints/restaurant';
+import * as json from '~/domain/json';
 import {
   fakeId,
   type DomainObject,
@@ -23,7 +26,15 @@ async function checkedCreate<T extends DomainObject>(
   }
   expect(id.id).toBeTypeOf('number');
   expect(id.id).not.toBe(domainObject.id.id);
+  expect(await api.exists(id)).toBe(true);
   return id;
+}
+
+async function checkedDelete<T extends DomainObject>(
+  api: CrudApi<T>,
+  id: T['id'],
+) {
+  expect(await api.delete(id)).toBe(true);
 }
 
 async function expectReadbackCreated<T extends DomainObject>(
@@ -44,11 +55,20 @@ async function expectReadbackCreated<T extends DomainObject>(
 async function expectMissingDeleted<T extends DomainObject>(
   api: CrudApi<T>,
   domainObject: T,
+  tryBrokenRud: boolean = true,
 ) {
   const id = await checkedCreate(api, domainObject);
-  const deleted = await api.delete(id);
-  expect(deleted).toBe(true);
+  const readback = await api.read(id);
+  if (readback === null) {
+    expect.fail('read-back domain object should exist prior to deletion');
+  }
+  await checkedDelete(api, id);
   expect(await api.exists(id)).toBe(false);
+  if (tryBrokenRud) {
+    expect(await api.read(id)).toBe(null);
+    expect(await api.delete(id)).toBe(false);
+    expect(await api.update(readback)).toBe(false);
+  }
 }
 
 async function expectUpdatedChanged<T extends DomainObject>(
@@ -87,6 +107,39 @@ function getFakeRestaurant2(): Restaurant {
   };
 }
 
+async function expectArrayRetrieval<
+  O extends DomainObject,
+  I extends DomainObject,
+>(
+  ownerJson: json.JSONParserPair<O>,
+  itemApi: CrudApi<I>,
+  getItems: (id: O['id']) => Promise<I[] | null>,
+  createFakeOwner: () => Promise<O['id']>,
+  createFakeOwner2: () => Promise<O['id']>,
+  getFakeItem: (id: O['id']) => I,
+  getFakeItem2: (id: O['id']) => I,
+) {
+  const owner = await createFakeOwner();
+  const item = await checkedCreate(itemApi, getFakeItem(owner));
+  const owner2 = await createFakeOwner2();
+  const item2 = await checkedCreate(itemApi, getFakeItem2(owner2));
+  const ownerItems = [await itemApi.read(item)];
+  const owner2Items = [await itemApi.read(item2)];
+  const actualOwnerItems = await getItems(owner);
+  const actualOwner2Items = await getItems(owner2);
+
+  expect(actualOwner2Items).not.toBe(null);
+  expect(actualOwnerItems).not.toBe(null);
+  expect(actualOwnerItems).toEqual(ownerItems);
+  expect(actualOwner2Items).toEqual(owner2Items);
+
+  expect(
+    await getItems(
+      ownerJson.field('id').parse(1e80 as json.JSONDomainObject<O>['id']),
+    ),
+  ).toBe(null);
+}
+
 describe('/restaurant endpoint', () => {
   it('can create and read back a restaurant', async () => {
     await expectReadbackCreated(restaurantApi, getFakeRestaurant());
@@ -104,24 +157,40 @@ describe('/restaurant endpoint', () => {
     );
   });
 
-  it('can retrieve drivers', async () => {
-    const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());
-    const driver = await checkedCreate(driverApi, getFakeDriver(restaurant));
-    const restaurant2 = await checkedCreate(
-      restaurantApi,
-      getFakeRestaurant2(),
+  it('can retrieve orders', async () => {
+    await expectArrayRetrieval(
+      json.restaurant,
+      orderApi,
+      id => restaurantApi.getOrders(id),
+      () => checkedCreate(restaurantApi, getFakeRestaurant()),
+      () => checkedCreate(restaurantApi, getFakeRestaurant2()),
+      getFakeOrder,
+      getFakeOrder,
     );
-    const driver2 = await checkedCreate(driverApi, getFakeDriver2(restaurant2));
-    const restaurantDrivers = [await driverApi.read(driver)];
-    const restaurant2Drivers = [await driverApi.read(driver2)];
-    const actualRestaurantDrivers = await restaurantApi.getDrivers(restaurant);
-    const actualRestaurant2Drivers =
-      await restaurantApi.getDrivers(restaurant2);
+  });
 
-    expect(actualRestaurant2Drivers).not.toBe(null);
-    expect(actualRestaurantDrivers).not.toBe(null);
-    expect(actualRestaurantDrivers).toEqual(restaurantDrivers);
-    expect(actualRestaurant2Drivers).toEqual(restaurant2Drivers);
+  it('can retrieve drivers', async () => {
+    await expectArrayRetrieval(
+      json.restaurant,
+      driverApi,
+      id => restaurantApi.getDrivers(id),
+      () => checkedCreate(restaurantApi, getFakeRestaurant()),
+      () => checkedCreate(restaurantApi, getFakeRestaurant2()),
+      getFakeDriver,
+      getFakeDriver2,
+    );
+  });
+
+  it('can retrieve menu items', async () => {
+    await expectArrayRetrieval(
+      json.restaurant,
+      menuApi,
+      id => restaurantApi.getMenuItems(id),
+      () => checkedCreate(restaurantApi, getFakeRestaurant()),
+      () => checkedCreate(restaurantApi, getFakeRestaurant2()),
+      getFakeMenuItem,
+      getFakeMenuItem2,
+    );
   });
 });
 
@@ -203,6 +272,25 @@ function getFakeDriver2(restaurant: Restaurant['id']): Driver {
   };
 }
 
+async function checkedCreateBatch(driver: Driver['id']) {
+  // note: this directly interfaces with the mock database, since there is no batching algorithm
+  const rawBatchId = db.batches.insert(
+    json.batch.unparse({
+      id: fakeId('Batch'),
+      driver,
+      dispatchTime: new Date(),
+      expectedCompletionTime: new Date(Date.now() + 1e3),
+      route: {
+        encoded: '19872AKJSDH1b3',
+      },
+    }),
+  );
+  if (rawBatchId === null) {
+    expect.fail("created batch id mustn't be null");
+  }
+  return json.batch.field('id').parse(rawBatchId);
+}
+
 describe('/driver endpoint', () => {
   it('can create and read back a driver', async () => {
     const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());
@@ -233,6 +321,35 @@ describe('/driver endpoint', () => {
       expect(readback?.onShift).toBe(option);
     }
   });
+
+  it('can fail to toggle shift for non-existent driver', async () => {
+    const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());
+    const driver = await checkedCreate(driverApi, getFakeDriver(restaurant));
+    await checkedDelete(driverApi, driver);
+    expect(await driverApi.setOnShift(driver, true)).toBe(false);
+  });
+
+  it('cannot read a batch from a new driver', async () => {
+    const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());
+    const driver = await checkedCreate(driverApi, getFakeDriver(restaurant));
+    expect(await driverApi.getBatch(driver)).toBe(null);
+  });
+
+  it('cannot read a batch from a non-existent driver', async () => {
+    const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());
+    const driver = await checkedCreate(driverApi, getFakeDriver(restaurant));
+    await checkedDelete(driverApi, driver);
+    expect(await driverApi.getBatch(driver)).toBe(null);
+  });
+
+  it('can read a fake batch', async () => {
+    const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());
+    const driver = await checkedCreate(driverApi, getFakeDriver(restaurant));
+    const batch = await checkedCreateBatch(driver);
+    expect(await driverApi.getBatch(driver)).toEqual(
+      await batchApi.read(batch),
+    );
+  });
 });
 
 function getFakeOrder(restaurant: Restaurant['id']): Order {
@@ -251,6 +368,22 @@ function getFakeOrder(restaurant: Restaurant['id']): Order {
   };
 }
 
+const tryAdvanceOrder = async (
+  state: Order['state'],
+  nextState: Order['state'],
+  works: boolean,
+) => {
+  const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());
+  const order = await checkedCreate<Order>(orderApi, {
+    ...getFakeOrder(restaurant),
+    state,
+  });
+  expect((await orderApi.read(order))?.state).toBe(state);
+  const advanced = await orderApi.advanceState(order);
+  expect(advanced).toBe(works);
+  expect((await orderApi.read(order))?.state).toBe(works ? nextState : state);
+};
+
 describe('/order endpoint', () => {
   it('can create and read back an order', async () => {
     const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());
@@ -259,7 +392,7 @@ describe('/order endpoint', () => {
 
   it('is gone after it is deleted', async () => {
     const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());
-    await expectMissingDeleted(orderApi, getFakeOrder(restaurant));
+    await expectMissingDeleted(orderApi, getFakeOrder(restaurant), false);
   });
 
   it('is high priority after being remade', async () => {
@@ -271,5 +404,62 @@ describe('/order endpoint', () => {
     const readback = await orderApi.read(order);
     expect(readback?.highPriority).toBe(true);
     expect(readback?.itemNames).toEqual(original?.itemNames);
+  });
+
+  it('can fail to remake a non-existent order', async () => {
+    const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());
+    const order = await checkedCreate(orderApi, getFakeOrder(restaurant));
+    await checkedDelete(orderApi, order);
+    expect(await orderApi.remake(order)).toBe(false);
+  });
+
+  it('advances when advanced', async () => {
+    await tryAdvanceOrder('cooking', 'cooked', true);
+  });
+
+  it("doesn't advance when >= cooked", async () => {
+    await tryAdvanceOrder('cooked', 'driving', false);
+    await tryAdvanceOrder('driving', 'delivered', false);
+  });
+
+  it('can update cooked time', async () => {
+    const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());
+    const order = await checkedCreate(orderApi, getFakeOrder(restaurant));
+    const cookedTime = new Date(Date.now() + 1e3);
+    const updated = await orderApi.updateCookedTime(order, cookedTime);
+    expect(updated).toBe(true);
+    expect((await orderApi.read(order))?.cookedTime).toEqual(cookedTime);
+  });
+
+  it('can fail to update cooked time', async () => {
+    const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());
+    const order = await checkedCreate(orderApi, getFakeOrder(restaurant));
+    await checkedDelete(orderApi, order);
+    const cookedTime = new Date(Date.now() + 1e3);
+    const updated = await orderApi.updateCookedTime(order, cookedTime);
+    expect(updated).toBe(false);
+  });
+});
+
+describe('/batch endpoint', () => {
+  it('can read batch orders', async () => {
+    const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());
+    const driver = await checkedCreate(driverApi, getFakeDriver(restaurant));
+    const driver2 = await checkedCreate(driverApi, getFakeDriver2(restaurant));
+    await expectArrayRetrieval(
+      json.batch,
+      orderApi,
+      batch => batchApi.getOrders(batch),
+      () => checkedCreateBatch(driver),
+      () => checkedCreateBatch(driver2),
+      batch => ({
+        ...getFakeOrder(restaurant),
+        currentBatch: batch,
+      }),
+      batch => ({
+        ...getFakeOrder(restaurant),
+        currentBatch: batch,
+      }),
+    );
   });
 });
