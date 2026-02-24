@@ -290,6 +290,66 @@ describe('Restaurant page', () => {
     expect(getMenuItemsFromDb()).toHaveLength(1);
   });
 
+  it('saves driver edits when leaving section edit mode', async () => {
+    await renderLoadedRestaurantPage();
+
+    const driversSection = getSectionByHeading('Drivers');
+    fireEvent.click(
+      within(driversSection).getByRole('button', {name: 'Edit Drivers'}),
+    );
+    fireEvent.click(within(driversSection).getByRole('button', {name: 'Edit'}));
+
+    fireEvent.change(within(driversSection).getByDisplayValue('Ben'), {
+      target: {value: 'Benny'},
+    });
+    fireEvent.change(within(driversSection).getByDisplayValue('2061112222'), {
+      target: {value: '2069990000'},
+    });
+    fireEvent.click(within(driversSection).getByRole('checkbox'));
+
+    fireEvent.click(
+      within(driversSection).getByRole('button', {name: 'Done Editing'}),
+    );
+
+    await waitFor(() =>
+      expect(getDriversFromDb()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: 'Benny',
+            phoneNumber: {compact: '2069990000'},
+            onShift: false,
+          }),
+        ]),
+      ),
+    );
+  });
+
+  it('saves menu item edits when leaving section edit mode', async () => {
+    await renderLoadedRestaurantPage();
+
+    const menuSection = getSectionByHeading('Menu Items');
+    fireEvent.click(
+      within(menuSection).getByRole('button', {name: 'Edit Menu'}),
+    );
+    fireEvent.click(within(menuSection).getByRole('button', {name: 'Edit'}));
+
+    fireEvent.change(within(menuSection).getByDisplayValue('Mochi'), {
+      target: {value: 'Updated via Section Done'},
+    });
+
+    fireEvent.click(
+      within(menuSection).getByRole('button', {name: 'Done Editing'}),
+    );
+
+    await waitFor(() =>
+      expect(getMenuItemsFromDb()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({name: 'Updated via Section Done'}),
+        ]),
+      ),
+    );
+  });
+
   it('updates and deletes menu items in edit mode', async () => {
     await renderLoadedRestaurantPage();
 

@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import type {MenuItem} from '~/domain/objects';
 import Button from '../Button';
 
@@ -20,12 +20,31 @@ export default function MenuItemRow({
   onDelete,
 }: MenuItemRowProps) {
   const [draftMenuItem, setDraftMenuItem] = useState(menuItem);
+  const wasEditingSection = useRef(isEditingSection);
+  const wasEditingMenuItem = useRef(isEditingMenuItem);
+
+  const hasDraftChanges = draftMenuItem.name !== menuItem.name;
 
   useEffect(() => {
     if (!isEditingMenuItem) {
       setDraftMenuItem(menuItem);
     }
   }, [menuItem, isEditingMenuItem]);
+
+  useEffect(() => {
+    const closedSection = wasEditingSection.current && !isEditingSection;
+    if (closedSection && wasEditingMenuItem.current && hasDraftChanges) {
+      onSave(draftMenuItem);
+    }
+    wasEditingSection.current = isEditingSection;
+    wasEditingMenuItem.current = isEditingMenuItem;
+  }, [
+    draftMenuItem,
+    hasDraftChanges,
+    isEditingMenuItem,
+    isEditingSection,
+    onSave,
+  ]);
 
   return (
     <tr className="border-b border-gray-100 dark:border-gray-800">

@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import type {Driver} from '~/domain/objects';
 import Button from '../Button';
 
@@ -20,12 +20,28 @@ export default function DriverRow({
   onDelete,
 }: DriverRowProps) {
   const [draftDriver, setDraftDriver] = useState(driver);
+  const wasEditingSection = useRef(isEditingSection);
+  const wasEditingDriver = useRef(isEditingDriver);
+
+  const hasDraftChanges =
+    draftDriver.name !== driver.name ||
+    draftDriver.phoneNumber.compact !== driver.phoneNumber.compact ||
+    draftDriver.onShift !== driver.onShift;
 
   useEffect(() => {
     if (!isEditingDriver) {
       setDraftDriver(driver);
     }
   }, [driver, isEditingDriver]);
+
+  useEffect(() => {
+    const closedSection = wasEditingSection.current && !isEditingSection;
+    if (closedSection && wasEditingDriver.current && hasDraftChanges) {
+      onSave(draftDriver);
+    }
+    wasEditingSection.current = isEditingSection;
+    wasEditingDriver.current = isEditingDriver;
+  }, [draftDriver, hasDraftChanges, isEditingDriver, isEditingSection, onSave]);
 
   return (
     <tr className="border-b border-gray-100 dark:border-gray-800">
