@@ -53,13 +53,19 @@ export default function EditOrderModal({order, state}: Props) {
   };
 
   const remake = async () => {
-    await orderApi.remake(order.id);
-    state.setOpen(false);
+    if (await orderApi.remake(order.id)) {
+      state.setOpen(false);
+    } else {
+      alert('Failed to remake order'); 
+    }
   };
 
   const cancel = async () => {
-    await orderApi.delete(order.id);
-    state.setOpen(false);
+    if (await orderApi.delete(order.id)) {
+      state.setOpen(false);
+    } else {
+      alert('Failed to cancel order');
+    }
   };
 
   return (
