@@ -68,14 +68,10 @@ export const orderHandlers = [
       client.send('<<this should never matter>>');
     };
 
-    // TODO: register handler for order changes
-    const handle = setInterval(() => {
-      changeListener();
-    }, 1500);
+    db.orders.addEventListener('change', changeListener);
 
     client.addEventListener('close', () => {
-      // TODO: unregister handler for order changes
-      clearInterval(handle);
+      db.orders.removeEventListener('change', changeListener);
     });
   }),
 ];

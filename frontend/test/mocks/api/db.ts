@@ -5,21 +5,24 @@ import type {DomainObject, Id, IdKey} from '~/domain/objects';
  * Represents a database table of domain objects.
  * A constraint can be enforced on the state of the rows, with the invariant that it must consider the empty table valid.
  */
-class Table<T extends DomainObject> {
+class Table<T extends DomainObject> extends EventTarget {
   private rows: T[] = [];
   private nextId = 1;
 
-  constructor(private isValid: (rows: T[]) => boolean) {}
+  constructor(private isValid: (rows: T[]) => boolean) {
+    super();
+  }
 
   private tryChange(newRows: T[]) {
     if (!this.isValid(newRows)) return false;
     this.rows = newRows;
+    this.dispatchEvent(new Event('change'));
     return true;
   }
 
   clear() {
     this.nextId = 1;
-    this.rows = [];
+    this.tryChange([]);
   }
 
   findAll(predicate: (row: T) => boolean = () => true) {
@@ -63,13 +66,14 @@ class Table<T extends DomainObject> {
  * Represents a database table of JSON representations of domain objects.
  * Very similar to table, but a JSONParserPair converts to/from JSON along the interface surface.
  */
-export class JSONTable<T extends DomainObject> {
+export class JSONTable<T extends DomainObject> extends EventTarget {
   private table: Table<T>;
 
   constructor(
     private parserPair: json.JSONParserPair<T>,
     unique?: Array<keyof T>,
   ) {
+    super();
     this.table = new Table(rows => {
       if (unique) {
         const keys = new Set(
@@ -79,6 +83,9 @@ export class JSONTable<T extends DomainObject> {
       }
 
       return true;
+    });
+    this.table.addEventListener('change', () => {
+      this.dispatchEvent(new Event('change'));
     });
   }
 
