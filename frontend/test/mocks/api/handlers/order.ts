@@ -1,6 +1,7 @@
 import {http, HttpResponse} from 'msw';
 import {
   asId,
+  badRequest,
   db,
   endpoint,
   makeCrudHandlers,
@@ -9,7 +10,6 @@ import {
 } from '../common';
 import {isStateBefore, nextStateAfter, type Order} from '~/domain/objects';
 import * as json from '~/domain/json';
-import {StatusCodes} from 'http-status-codes';
 
 export const orderHandlers = [
   ...makeCrudHandlers('/order', db.orders, ['create', 'read', 'delete']),
@@ -17,15 +17,19 @@ export const orderHandlers = [
     const order = db.orders.get(asId<Order>(req.params.id));
     if (!order) return notFound('order');
     const parsedState = json.order.field('state').parse(order.state);
-    if (!isStateBefore(parsedState, 'cooked')) {
-      return HttpResponse.text('Cannot advance past cooked', {
-        status: StatusCodes.BAD_REQUEST,
-      });
+    if (!isStateBefore(parsedState, 'cooked')) return badRequest();
+
+    const newOrder: Order = {
+      ...json.order.parse(order),
+      state: nextStateAfter(parsedState),
+    };
+
+    if (newOrder.state === 'cooked') {
+      newOrder.cookedTime = new Date();
     }
-    db.orders.update({
-      ...order,
-      state: json.order.field('state').unparse(nextStateAfter(parsedState)),
-    });
+
+    db.orders.update(json.order.unparse(newOrder));
+
     return noContent();
   }),
   http.put(endpoint('/order/:id/cookedTime'), async req => {
