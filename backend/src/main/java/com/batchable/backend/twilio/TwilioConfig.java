@@ -10,7 +10,6 @@ import org.springframework.beans.factory.annotation.Value;
  * Configures and initializes the Twilio SDK using credentials from application properties. Active
  * for all profiles except "test" so tests do not require real Twilio credentials.
  */
-@Profile("!test")
 @Configuration
 public class TwilioConfig {
 
