@@ -19,8 +19,9 @@ interface Props {
 }
 
 export default function EditOrderModal({order, state}: Props) {
-  const cookTime =
-    (order.cookedTime.getTime() - order.initialTime.getTime()) / MS_PER_MINUTE;
+  const cookTime = Math.ceil(
+    (order.cookedTime.getTime() - order.initialTime.getTime()) / MS_PER_MINUTE,
+  );
 
   const editable = isStateBefore(order.state, 'cooked');
 
@@ -35,14 +36,19 @@ export default function EditOrderModal({order, state}: Props) {
       order.initialTime.getTime() + Number(data.cookTime) * MS_PER_MINUTE,
     );
     console.log('Edit Order Cooked Time:', cookedTime);
-    await orderApi.updateCookedTime(order.id, cookedTime);
+    if (!(await orderApi.updateCookedTime(order.id, cookedTime))) {
+      alert('Failed to edit preparation time');
+    }
 
-    // edit state
+    // repeatedly advance order state until correct
     let currentState = order.state;
     while (isStateBefore(currentState, data.state)) {
       currentState = nextStateAfter(currentState);
       console.log('Advance Order State:', currentState);
-      await orderApi.advanceState(order.id);
+      if (!(await orderApi.advanceState(order.id))) {
+        alert('Failed to change order state');
+        break;
+      }
     }
   };
 
