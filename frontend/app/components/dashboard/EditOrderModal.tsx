@@ -22,28 +22,27 @@ export default function EditOrderModal({order, state}: Props) {
   const cookTime =
     (order.cookedTime.getTime() - order.initialTime.getTime()) / MS_PER_MINUTE;
 
-  const canChangeCookTime = isStateBefore(order.state, 'cooked');
-  const canChangeState = isStateBefore(order.state, 'delivered');
+  const editable = isStateBefore(order.state, 'cooked');
 
   const applyChanges = async (data: {
     cookTime: string;
     state: Order['state'];
   }) => {
-    if (canChangeCookTime) {
-      const cookedTime = new Date(
-        order.initialTime.getTime() + Number(data.cookTime) * MS_PER_MINUTE,
-      );
-      console.log('Edit Order Cooked Time:', cookedTime);
-      await orderApi.updateCookedTime(order.id, cookedTime);
-    }
+    if (!editable) return;
 
-    if (canChangeState) {
-      let currentState = order.state;
-      while (isStateBefore(currentState, data.state)) {
-        currentState = nextStateAfter(currentState);
-        console.log('Advance Order State:', currentState);
-        await orderApi.advanceState(order.id);
-      }
+    // edit cooked time
+    const cookedTime = new Date(
+      order.initialTime.getTime() + Number(data.cookTime) * MS_PER_MINUTE,
+    );
+    console.log('Edit Order Cooked Time:', cookedTime);
+    await orderApi.updateCookedTime(order.id, cookedTime);
+
+    // edit state
+    let currentState = order.state;
+    while (isStateBefore(currentState, data.state)) {
+      currentState = nextStateAfter(currentState);
+      console.log('Advance Order State:', currentState);
+      await orderApi.advanceState(order.id);
     }
   };
 
@@ -62,7 +61,7 @@ export default function EditOrderModal({order, state}: Props) {
       title={`Edit ${formatOrderName(order)}`}
       state={state}
       apply={applyChanges}
-      confirm={canChangeCookTime || canChangeState ? 'Apply Changes' : 'OK'}
+      confirm={editable ? 'Apply Changes' : 'OK'}
     >
       <div className="flex gap-3">
         <Button style="red" onClick={cancel} tw="grow flex-0">
@@ -79,7 +78,7 @@ export default function EditOrderModal({order, state}: Props) {
           {formatTimeInterval(order.deliveryTime.getTime() - Date.now())}
         </p>
       </div>
-      {canChangeCookTime && (
+      {editable && (
         <FormField
           label="Prep Time (min)"
           type="number"
@@ -87,7 +86,7 @@ export default function EditOrderModal({order, state}: Props) {
           defaultValue={cookTime}
         />
       )}
-      {canChangeState &&
+      {editable &&
         ORDER_STATES.map(state => {
           const disabled = isStateBefore(state, order.state);
           return (
