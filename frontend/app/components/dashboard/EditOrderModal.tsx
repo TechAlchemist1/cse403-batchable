@@ -56,7 +56,7 @@ export default function EditOrderModal({order, state}: Props) {
     if (await orderApi.remake(order.id)) {
       state.setOpen(false);
     } else {
-      alert('Failed to remake order'); 
+      alert('Failed to remake order');
     }
   };
 
