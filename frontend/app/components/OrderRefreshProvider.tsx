@@ -1,17 +1,19 @@
 import {createContext, useContext, useEffect, useState} from 'react';
 import {RestaurantContext} from './RestaurantProvider';
+import type {Restaurant} from '~/domain/objects';
 
 class RefreshMonitor extends EventTarget {
-  private handle: number;
+  private socket: WebSocket;
 
-  constructor(/* restaurant: Restaurant['id'] */) {
+  constructor(restaurant: Restaurant['id']) {
     super();
-    this.handle = setInterval(() => {
+    this.socket = new WebSocket(`/topic/orders/${restaurant.id}`);
+    this.socket.addEventListener('message', () => {
       this.dispatchEvent(new Event('orderUpdate'));
-    }, 1500) as unknown as number; // TODO: make this a websocket
+    });
   }
   close() {
-    clearInterval(this.handle);
+    this.socket.close();
   }
 }
 
@@ -28,8 +30,10 @@ export default function OrderRefreshProvider({
   const [monitor, setMonitor] = useState<RefreshMonitor | null>(null);
 
   useEffect(() => {
-    monitor?.close();
-    setMonitor(new RefreshMonitor(/* restaurant */));
+    if (!restaurant) return;
+    const newMonitor = new RefreshMonitor(restaurant);
+    setMonitor(newMonitor);
+    return () => newMonitor?.close();
   }, [restaurant]);
 
   return <OrderRefreshContext value={monitor}>{children}</OrderRefreshContext>;

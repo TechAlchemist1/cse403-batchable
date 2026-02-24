@@ -21,8 +21,8 @@ export const resetMockDatabase = () => {
   }
 };
 
-export function endpoint(path: `/${string}`) {
-  return `http://localhost:5173${path}`;
+export function endpoint(path: `/${string}`, protocol = 'http') {
+  return `${protocol}://localhost:5173${path}`;
 }
 
 export function notFound(type: string) {
