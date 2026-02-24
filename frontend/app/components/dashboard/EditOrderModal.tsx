@@ -92,8 +92,10 @@ export default function EditOrderModal({order, state}: Props) {
           defaultValue={cookTime}
         />
       )}
-      {editable &&
-        ORDER_STATES.map(state => {
+      {editable ? (
+        ORDER_STATES.filter(state => {
+          return isStateBefore(state, nextStateAfter('cooked'));
+        }).map(state => {
           const disabled = isStateBefore(state, order.state);
           return (
             <FormField
@@ -106,7 +108,10 @@ export default function EditOrderModal({order, state}: Props) {
               defaultChecked={order.state === state}
             />
           );
-        })}
+        })
+      ) : (
+        <OrderState state={order.state} />
+      )}
     </FormModal>
   );
 }
