@@ -1,4 +1,4 @@
-import {http, HttpResponse, ws} from 'msw';
+import {http, ws} from 'msw';
 import {
   asId,
   badRequest,
