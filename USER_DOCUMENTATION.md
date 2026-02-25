@@ -84,4 +84,5 @@ more quickly.
 ## Known bugs
 -Driver can be taken off shift despite on a delivery
 -Restaurant ID defaults to 1 due to authentication bug
+-Drivers stay assigned to batches even after deleting all the batched orders
 
