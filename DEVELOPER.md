@@ -66,7 +66,7 @@ Test classes should follow the naming convention:
 
 Backend tests are written using JUnit and Mockito. We follow standard JUnit testing patterns. Unit tests should isolate business logic in: Services, The batching algorithm, The batching manager, The database manager 
 
-Controller tests should verify HTTP behavior and response correctness. When testing components that depend on external services (such as Twilio), those services should be mocked rather than invoked directly.
+Controller tests should verify HTTP behavior and response correctness. When testing components that depend on external services such as Twilio, those services should be mocked rather than invoked directly.
 
 If a test requires database interaction, ensure the database is running before executing integration tests. All new backend features must include corresponding tests before being merged into main. Please follow existing test structure and naming conventions for consistency.
 
