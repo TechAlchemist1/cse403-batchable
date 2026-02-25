@@ -19,15 +19,27 @@ import {
 } from 'test/mocks/domain_objects';
 import type {MenuItem, Restaurant} from '~/domain/objects';
 import {RestaurantContext} from '~/components/RestaurantProvider';
+import {server} from 'test/mocks/api/server';
+import {http} from 'msw';
+import {badRequest, endpoint} from 'test/mocks/api/common';
 
-async function renderOpenModal(restaurant: Restaurant['id'] | null) {
+function renderOpenModal(restaurant: Restaurant['id'] | null) {
   const hook = renderHook(() => useModal());
   act(() => hook.result.current.setOpen(true));
-  render(
+  const rendered = render(
     <RestaurantContext value={restaurant}>
       <AddOrderModal modal={hook.result.current} />
     </RestaurantContext>,
   );
+  return {
+    modal: () => hook.result.current,
+    rerender: (rid: Restaurant['id'] | null = restaurant) =>
+      rendered.rerender(
+        <RestaurantContext value={rid}>
+          <AddOrderModal modal={hook.result.current} />
+        </RestaurantContext>,
+      ),
+  };
 }
 
 async function tryCreateOrder(
@@ -53,7 +65,7 @@ async function tryCreateOrder(
     expect(menuItems?.length).toBe(2);
   });
 
-  await renderOpenModal(restaurant);
+  renderOpenModal(restaurant);
 
   fireEvent.change(screen.getByLabelText(/customer address/i), {
     target: {value: address},
@@ -79,7 +91,7 @@ async function tryCreateOrder(
 describe('<AddOrderModal>', () => {
   it('has the input elements', async () => {
     const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());
-    await renderOpenModal(restaurant);
+    renderOpenModal(restaurant);
 
     // buttons
     expect(
@@ -102,7 +114,7 @@ describe('<AddOrderModal>', () => {
         prepTime: 15,
         deliveryTime: 40,
       },
-      (menuItems: MenuItem[]) => [menuItems[1]],
+      items => [items[1]],
     );
     await waitFor(async () => {
       const orders = await restaurantApi.getOrders(restaurant);
@@ -116,6 +128,7 @@ describe('<AddOrderModal>', () => {
   });
 
   it('fails to add order with no items', async () => {
+    window.alert = () => {};
     vi.spyOn(window, 'alert');
     await tryCreateOrder(
       {
@@ -128,5 +141,62 @@ describe('<AddOrderModal>', () => {
     await waitFor(() => {
       expect(window.alert).toHaveBeenCalled();
     });
+  });
+
+  it('fails to add order on API failure', async () => {
+    window.alert = () => {};
+    vi.spyOn(window, 'alert');
+    await tryCreateOrder(
+      {
+        address: 'New York City, NY',
+        prepTime: 30,
+        deliveryTime: 100,
+      },
+      items => [items[0]],
+    );
+    server.use(
+      http.post(endpoint('/order'), () => {
+        return badRequest();
+      }),
+    );
+    await waitFor(() => {
+      expect(window.alert).toHaveBeenCalled();
+    });
+  });
+
+  it('can be re-opened', async () => {
+    const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());
+    const menuItem = getFakeMenuItem(restaurant);
+    await menuApi.create(menuItem);
+    const {modal, rerender} = renderOpenModal(restaurant);
+    fireEvent.click(await screen.findByLabelText(menuItem.name));
+    fireEvent.change(screen.getByLabelText(/customer address/i), {
+      target: {value: 'Seattle, WA'},
+    });
+    fireEvent.click(screen.getByRole('button', {name: /create new order/i}));
+    rerender();
+    await waitFor(() => {
+      expect(modal().open).toBe(false);
+      expect(screen.queryByText(/customer address/i)).not.toBeInTheDocument();
+    });
+    act(() => modal().setOpen(true));
+    rerender();
+    expect(await screen.findByText(/customer address/i)).toBeInTheDocument();
+    expect(await screen.findByLabelText(menuItem.name)).not.toBeChecked();
+  });
+
+  it('fails without a restaurant', async () => {
+    vi.spyOn(window, 'alert');
+    const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());
+    const menuItem = getFakeMenuItem(restaurant);
+    await menuApi.create(menuItem);
+    const {rerender} = renderOpenModal(restaurant);
+    fireEvent.click(await screen.findByLabelText(menuItem.name));
+    fireEvent.change(screen.getByLabelText(/customer address/i), {
+      target: {value: 'Seattle, WA'},
+    });
+    rerender(null);
+    fireEvent.click(screen.getByRole('button', {name: /create new order/i}));
+    expect(window.alert).toHaveBeenCalled();
   });
 });
