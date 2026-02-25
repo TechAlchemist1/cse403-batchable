@@ -3,16 +3,16 @@
 ## 1. How to obtain the source code
 To obtain the Batchable source code, clone the main repository from GitHub using git clone. All system components, including the backend, frontend, documentation, and configuration files, are contained within this single repository.Developers should then create a new feature branch for changes they would like to make before beginning development.
 
-If environment variables are required such as API keys, developers should create a local .env file. Sensitive values should never be committed to version control.
+If environment variables are required such as API keys, developers should create a local .env file. These values should never be committed to version control.
 
 ## 2. The layout of the directory structure
 The repository is organized into three primary components: infra, frontend, and backend. Each component has a clearly defined responsibility within the system architecture.
 
 The infra directory contains the infrastructure and database configuration for the system. This section handles the creation, initialization, and maintenance of the PostgreSQL database using SQL files. It defines schema setup, table creation, and any required database configuration necessary for the backend to operate correctly.
 
-The frontend directory contains the client-side application and its associated tests. The main application code is located under frontend/app/. Within this directory, the application is structured by concern: api/ contains frontend API wrappers that communicate with the backend, components/ contains reusable UI components, domain/ defines shared types and domain-level logic, routes/ contains route-level pages and navigation logic, and util/ stores general utility functions used throughout the frontend. Static assets are located under frontend/public/. Frontend tests are located under frontend/test/ and mirror the structure of the application layer.
+The frontend directory contains the client-side application and its associated tests. The main application code is located under frontend/app/. Within this directory, the application is structured as follows: api/ contains frontend API wrappers that communicate with the backend, components/ contains reusable UI components, domain/ defines shared types and domain-level logic, routes/ contains route-level pages and navigation logic, and util/ stores general utility functions used throughout the frontend. Static assets are located under frontend/public/. Frontend tests are located under frontend/test/ and follow the structure of the application layer.
 
-The backend directory contains the server-side application implemented in Java. The primary source code resides in backend/src/main/java/. This layer contains the core application components, including the controllers that define HTTP endpoints, the services layer that implements business logic, and the database manager responsible for interacting with the persistence layer. -- fill in the requistie parts for the folders of the backend
+The backend directory contains the server-side application implemented in Java. The primary source code resides in backend/src/main/java/. This layer contains the core application components, including the controllers that define HTTP endpoints, the services layer that implements business logic, and the database manager responsible for interacting with the persistence layer, the twilio manager which interacts with the twilio api, the websocket which handles communication with the frontend, client and models which handle the google API, and the batching alogrithim and manager which handle orchestration of batching.
 
 
 ## 3. How to build the software
@@ -38,7 +38,7 @@ To get a prettier view of the testing infrastructure, run `npm test -- --ui` ins
 
 To run the backend tests, navigate to the backend directory. and run `./mvnw clean test`. This will run all tests. To view the code coverage on the backend. From the
 ```bash
-./mvnw verify
+./mvnw clean verify
 ```
 Look for coverage results in `backend/target/site/jacoco/index.html`
 
@@ -61,8 +61,9 @@ For the backend:
 To add a new test to the back-end, create a new test file under backend/src/test/java/ that mirrors the package structure of the file being tested.
 
 Test classes should follow the naming convention:
--ClassNameTest for unit tests
--ClassNameIT_CI for integration tests and to have them add to the CI for github
+-ClassNameTest.java for unit tests
+-ClassNameIT.java for integration tests and have them not trigger the CI
+-ClassNameIT_CI.java for integration tests and to have them add to the CI for github
 
 Backend tests are written using JUnit and Mockito. We follow standard JUnit testing patterns. Unit tests should isolate business logic in: Services, The batching algorithm, The batching manager, The database manager 
 
