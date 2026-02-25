@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service;
 import com.batchable.backend.db.models.Order;
 import com.batchable.backend.db.models.Restaurant;
 import com.batchable.backend.service.internal.RestaurantBatchingManager;
-import com.batchable.backend.twilio.TwilioManagerImpl;
+import com.batchable.backend.twilio.TwilioManager;
 import com.batchable.backend.websocket.OrderWebSocketPublisher;
 import jakarta.annotation.PostConstruct;
 
@@ -26,7 +26,7 @@ import jakarta.annotation.PostConstruct;
 @Service
 public class BatchingManager {
 
-  private final TwilioManagerImpl twilioManagerImpl;
+  private final TwilioManager twilioManager;
 
   private final DbOrderService dbOrderService;
 
@@ -61,14 +61,14 @@ public class BatchingManager {
    */
   public BatchingManager(OrderWebSocketPublisher publisher, BatchingAlgorithm batchingAlgorithm,
       RestaurantService restaurantService, RouteService routeService, DbOrderService dbOrderService,
-      DriverService driverService, TwilioManagerImpl twilioManagerImpl) {
+      DriverService driverService, TwilioManager twilioManager) {
     this.publisher = publisher;
     this.batchingAlgorithm = batchingAlgorithm;
     this.restaurantService = restaurantService;
     this.routeService = routeService;
     this.dbOrderService = dbOrderService;
     this.driverService = driverService;
-    this.twilioManagerImpl = twilioManagerImpl;
+    this.twilioManager = twilioManager;
   }
 
   /** Initializes the managers corresponding to pre-populated data */
@@ -112,7 +112,7 @@ public class BatchingManager {
     String address = restaurant.location;
     restaurantManagers.put(restaurantId,
         new RestaurantBatchingManager(restaurantId, address, publisher, batchingAlgorithm,
-            routeService, dbOrderService, driverService, restaurantService, twilioManagerImpl,
+            routeService, dbOrderService, driverService, restaurantService, twilioManager,
             null));
   }
 

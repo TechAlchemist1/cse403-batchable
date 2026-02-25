@@ -6,7 +6,7 @@ import com.batchable.backend.db.models.Order;
 import com.batchable.backend.service.DbOrderService;
 import com.batchable.backend.service.DriverService;
 import com.batchable.backend.twilio.TwilioConfig;
-import com.batchable.backend.twilio.TwilioManagerImpl;
+import com.batchable.backend.twilio.TwilioManager;
 import com.twilio.rest.api.v2010.account.Message;
 import com.twilio.rest.api.v2010.account.MessageCreator;
 import com.twilio.type.PhoneNumber;
@@ -34,7 +34,7 @@ import static org.mockito.Mockito.*;
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-class TwilioManagerImplTest {
+class TwilioManagerTest {
 
   // Mocked dependencies
   @Mock
@@ -60,14 +60,14 @@ class TwilioManagerImplTest {
   private ArgumentCaptor<String> messageBodyCaptor;
 
   // The class under test
-  private TwilioManagerImpl twilioManager;
+  private TwilioManager twilioManager;
 
   /**
-   * Initializes the TwilioManagerImpl before each test with mocked dependencies.
+   * Initializes the TwilioManager before each test with mocked dependencies.
    */
   @BeforeEach
   void setUp() {
-    twilioManager = new TwilioManagerImpl(config, dbOrderService, driverService);
+    twilioManager = new TwilioManager(config, dbOrderService, driverService);
   }
 
   /**

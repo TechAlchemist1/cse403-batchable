@@ -16,7 +16,7 @@ import com.batchable.backend.exception.InvalidRouteException;
 import com.batchable.backend.model.dto.RouteDirectionsResponse;
 import com.batchable.backend.service.BatchingAlgorithm;
 import com.batchable.backend.service.RouteService;
-import com.batchable.backend.twilio.TwilioManagerImpl;
+import com.batchable.backend.twilio.TwilioManager;
 import com.batchable.backend.service.BatchingAlgorithm.TentativeBatch;
 import com.batchable.backend.util.Log;
 import com.batchable.backend.service.DbOrderService;
@@ -42,7 +42,7 @@ public class RestaurantBatchingManager {
   private final DbOrderService dbOrderService;
   private final DriverService driverService;
   private final RestaurantService restaurantService;
-  private final TwilioManagerImpl twilioManagerImpl;
+  private final TwilioManager twilioManager;
   // time to add when an order isn't ready when it should be for batching
   private static final long SECONDS_ADDITIONAL_COOK_TIME = 6;
   private boolean updated = false; // flag for if checkExpiredBatches() made any changes to batches
@@ -59,7 +59,7 @@ public class RestaurantBatchingManager {
   public RestaurantBatchingManager(long restaurantId, String restaurantAddress,
       OrderWebSocketPublisher publisher, BatchingAlgorithm batchingAlgorithm,
       RouteService routeService, DbOrderService dbOrderService, DriverService driverService,
-      RestaurantService restaurantService, TwilioManagerImpl twilioManagerImpl, Batches batches) {
+      RestaurantService restaurantService, TwilioManager twilioManager, Batches batches) {
     this.restaurantId = restaurantId;
     this.restaurantAddress = restaurantAddress;
     this.publisher = publisher;
@@ -68,7 +68,7 @@ public class RestaurantBatchingManager {
     this.dbOrderService = dbOrderService;
     this.driverService = driverService;
     this.restaurantService = restaurantService;
-    this.twilioManagerImpl = twilioManagerImpl;
+    this.twilioManager = twilioManager;
     this.batches = (batches != null) ? batches : new Batches();
 
     initializeOrders();
@@ -200,13 +200,13 @@ public class RestaurantBatchingManager {
 
   /** Handles an active batch changing by calling the appropriate dependencies. */
   private void handleActiveBatchChange(long batchId) {
-    twilioManagerImpl.handleBatchChange(batchId, restaurantAddress);
+    twilioManager.handleBatchChange(batchId, restaurantAddress);
     updated = true;
   }
 
   /** Handles a new batch becoming active by calling the appropriate dependencies. */
   private void handleNewActiveBatch(long batchId) {
-    twilioManagerImpl.handleNewBatch(batchId, restaurantAddress);
+    twilioManager.handleNewBatch(batchId, restaurantAddress);
     updated = true;
   }
 
