@@ -1,4 +1,4 @@
-import {http, HttpResponse, ws} from 'msw';
+import {http, HttpResponse, sse} from 'msw';
 import {
   asId,
   db,
@@ -11,7 +11,12 @@ import {isStateBefore, nextStateAfter, type Order} from '~/domain/objects';
 import * as json from '~/domain/json';
 import {StatusCodes} from 'http-status-codes';
 
-const refreshSocket = ws.link(endpoint('/topic/orders/:id', 'ws'));
+if (!globalThis.EventSource) {
+  // this allows the server-side portion of the MSW SSE mock to run without error
+  Object.defineProperty(globalThis, 'EventSource', {
+    value: class EventSource {},
+  });
+}
 
 export const orderHandlers = [
   ...makeCrudHandlers('/order', db.orders, ['create', 'read', 'delete']),
@@ -63,15 +68,12 @@ export const orderHandlers = [
 
     return noContent();
   }),
-  refreshSocket.addEventListener('connection', async ({client}) => {
-    const changeListener = () => {
-      client.send('<<this should never matter>>');
-    };
-
-    db.orders.addEventListener('change', changeListener);
-
-    client.addEventListener('close', () => {
-      db.orders.removeEventListener('change', changeListener);
+  sse<{refresh: string}>('/sse/orders/:id', async ({client}) => {
+    db.orders.addEventListener('change', () => {
+      client.send({
+        event: 'refresh',
+        data: '<<this should never matter>>',
+      });
     });
   }),
 ];
