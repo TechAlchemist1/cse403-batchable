@@ -42,7 +42,7 @@ To run the backend tests, navigate to the backend directory. and run `./mvnw cle
 ```
 Look for coverage results in `backend/target/site/jacoco/index.html`
 
-To see test results (and code coverage information) in the GitHub CI, look into the CI run details for the "Frontend CI / Build", and look under the step "Run Tests". This will show the code coverage report, or test failure reasons. PRs with under 70% branch and statement coverage should not be merged (unless those branches can be reasonably be shown to be impossible but required by the style guide), and new features need to adhere to these guidelines.
+To see test results (and code coverage information) in the GitHub CI, look into the CI run details for the "Frontend CI / Build", and look under the step "Run Tests". This will show the code coverage report, or test failure reasons. PRs with under 70% branch and statement coverage for the front end should not be merged (unless those branches can be reasonably be shown to be impossible but required by the style guide), and new features need to adhere to these guidelines.
 
 
 ## 5. How to add new tests
