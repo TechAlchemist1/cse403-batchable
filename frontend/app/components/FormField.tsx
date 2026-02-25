@@ -13,7 +13,7 @@ type Props = {
  */
 export default function FormField(props: Props) {
   const inputId = useId();
-  const horizontal = props.type === 'checkbox' || props.type === 'radio';
+  const horizontal = ['checkbox', 'radio'].includes(props.type);
   const label = props.label && (
     <label
       className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300 cursor-pointer"

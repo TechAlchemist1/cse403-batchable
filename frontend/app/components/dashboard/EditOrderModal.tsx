@@ -11,6 +11,7 @@ import OrderState from '../OrderState';
 import {MS_PER_MINUTE} from '~/util/time';
 import {formatOrderName, formatTimeInterval} from '~/util/format';
 import {orderApi} from '~/api/endpoints/order';
+import Button from '../Button';
 
 interface Props {
   order: Order;
@@ -18,31 +19,52 @@ interface Props {
 }
 
 export default function EditOrderModal({order, state}: Props) {
-  const cookTime =
-    (order.cookedTime.getTime() - order.initialTime.getTime()) / MS_PER_MINUTE;
+  const cookTime = Math.ceil(
+    (order.cookedTime.getTime() - order.initialTime.getTime()) / MS_PER_MINUTE,
+  );
 
-  const canChangeCookTime = isStateBefore(order.state, 'cooked');
-  const canChangeState = isStateBefore(order.state, 'delivered');
+  const editable = isStateBefore(order.state, 'cooked');
 
   const applyChanges = async (data: {
     cookTime: string;
     state: Order['state'];
   }) => {
-    if (canChangeCookTime) {
-      const cookedTime = new Date(
-        order.initialTime.getTime() + Number(data.cookTime) * MS_PER_MINUTE,
-      );
-      console.log('Edit Order Cooked Time:', cookedTime);
-      await orderApi.updateCookedTime(order.id, cookedTime);
+    if (!editable) return;
+
+    // edit cooked time
+    const cookedTime = new Date(
+      order.initialTime.getTime() + Number(data.cookTime) * MS_PER_MINUTE,
+    );
+    console.log('Edit Order Cooked Time:', cookedTime);
+    if (!(await orderApi.updateCookedTime(order.id, cookedTime))) {
+      alert('Failed to edit preparation time');
     }
 
-    if (canChangeState) {
-      let currentState = order.state;
-      while (isStateBefore(currentState, data.state)) {
-        currentState = nextStateAfter(currentState);
-        console.log('Advance Order State:', currentState);
-        await orderApi.advanceState(order.id);
+    // repeatedly advance order state until correct
+    let currentState = order.state;
+    while (isStateBefore(currentState, data.state)) {
+      currentState = nextStateAfter(currentState);
+      console.log('Advance Order State:', currentState);
+      if (!(await orderApi.advanceState(order.id))) {
+        alert('Failed to change order state');
+        break;
       }
+    }
+  };
+
+  const remake = async () => {
+    if (await orderApi.remake(order.id)) {
+      state.setOpen(false);
+    } else {
+      alert('Failed to remake order');
+    }
+  };
+
+  const cancel = async () => {
+    if (await orderApi.delete(order.id)) {
+      state.setOpen(false);
+    } else {
+      alert('Failed to cancel order');
     }
   };
 
@@ -51,8 +73,16 @@ export default function EditOrderModal({order, state}: Props) {
       title={`Edit ${formatOrderName(order)}`}
       state={state}
       apply={applyChanges}
-      confirm={canChangeCookTime || canChangeState ? 'Apply Changes' : 'OK'}
+      confirm={editable ? 'Apply Changes' : 'OK'}
     >
+      <div className="flex gap-3">
+        <Button style="red" onClick={cancel} tw="grow flex-0">
+          Cancel Order
+        </Button>
+        <Button style="amber" onClick={remake} tw="grow flex-0">
+          Remake Order
+        </Button>
+      </div>
       <div className="text-sm text-gray-500">
         <p>Items: {order.itemNames.join(', ')}</p>
         <p>
@@ -60,7 +90,7 @@ export default function EditOrderModal({order, state}: Props) {
           {formatTimeInterval(order.deliveryTime.getTime() - Date.now())}
         </p>
       </div>
-      {canChangeCookTime && (
+      {editable && (
         <FormField
           label="Prep Time (min)"
           type="number"
@@ -68,8 +98,10 @@ export default function EditOrderModal({order, state}: Props) {
           defaultValue={cookTime}
         />
       )}
-      {canChangeState &&
-        ORDER_STATES.map(state => {
+      {editable ? (
+        ORDER_STATES.filter(state => {
+          return isStateBefore(state, nextStateAfter('cooked'));
+        }).map(state => {
           const disabled = isStateBefore(state, order.state);
           return (
             <FormField
@@ -82,7 +114,10 @@ export default function EditOrderModal({order, state}: Props) {
               defaultChecked={order.state === state}
             />
           );
-        })}
+        })
+      ) : (
+        <OrderState state={order.state} />
+      )}
     </FormModal>
   );
 }
