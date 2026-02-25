@@ -1,5 +1,5 @@
 import {act} from '@testing-library/react';
-import {beforeEach} from 'node:test';
+import {beforeEach} from 'vitest';
 import {useEffect, useState} from 'react';
 import {vi} from 'vitest';
 import {type Loader} from '~/util/query';
