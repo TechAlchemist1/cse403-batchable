@@ -11,7 +11,7 @@ import {isStateBefore, nextStateAfter, type Order} from '~/domain/objects';
 import * as json from '~/domain/json';
 import {StatusCodes} from 'http-status-codes';
 
-if (typeof window === 'undefined') {
+if (!globalThis.EventSource) {
   // this allows the server-side portion of the MSW SSE mock to run without error
   Object.defineProperty(globalThis, 'EventSource', {
     value: class EventSource {},
