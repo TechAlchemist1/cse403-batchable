@@ -7,8 +7,8 @@ class RefreshMonitor extends EventTarget {
 
   constructor(restaurant: Restaurant['id']) {
     super();
-    this.eventSource = new EventSource(`/topic/orders/${restaurant.id}`);
-    this.eventSource.addEventListener('message', () => {
+    this.eventSource = new EventSource(`/sse/orders/${restaurant.id}`);
+    this.eventSource.addEventListener('refresh', () => {
       this.dispatchEvent(new Event('orderUpdate'));
     });
   }
