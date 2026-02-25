@@ -16,7 +16,7 @@ The backend directory contains the server-side application implemented in Java. 
 
 
 ## 3. How to build the software
-Batchable uses Maven as its build system. To build the software, ensure that Java version 17 and Maven are installed on your system. Ensure Docker is running and execute docker compose up to start PostgreSQL.
+Batchable uses Maven as its build system. To build the software, ensure that Java version 17 and Maven are installed on your system. Ensure Docker is running.
 
 Put the add your .env file in the root of the project with your Google, Twilio API keys, and Database URL.
 Then, while still in the root, execute the following in a sh-compatible terminal:
@@ -36,12 +36,17 @@ To run tests locally, after running `./build.sh` in the root of the project, run
 
 To get a prettier view of the testing infrastructure, run `npm test -- --ui` instead, which will provide a link (with a 5-ish digit port number) to view live test results. Very detailed code coverage information can be found via an icon in the upper right of the left panel of the Vitest Web UI.
 
+To run the backend tests, navigate to the backend directory. and run `./mvnw test`. This will run all tests. To view the code coverage on the backend. From the
+```bash
+./mvnw verify
+```
+Look for coverage results in `backend/target/site/jacoco/index.html`
+
 To see test results (and code coverage information) in the GitHub CI, look into the CI run details for the "Frontend CI / Build", and look under the step "Run Tests". This will show the code coverage report, or test failure reasons. PRs with under 80% branch and statement coverage should not be merged (unless those branches can be reasonably be shown to be impossible but required by the style guide), and new features need to adhere to these guidelines.
 
 
 ## 5. How to add new tests
 For front-end:
-
 To add a new test to the front-end, simply add a new file within frontend/test, ending in .spec.ts for normal unit tests or .spec.tsx for component and UI tests. If the feature you are testing is related to a specific file within frontend/app, place your testing file in the same place relative to frontend/test (e.g. tests for frontend/app/components/Modal.tsx should be in frontend/test/components/Modal.spec.tsx).
 
 Almost every new test will need imports from our testing frameworks: Vitest and React Testing Library.
@@ -52,7 +57,22 @@ We follow the typical patterns for these tools, whose documentation websites can
 
 Miscellaneous Advice: re-usable mock domain objects (Orders, Drivers, etc.) can be found in frontend/test/mocks/domain_objects.ts, and due to our mocking system, back-end API calls can be made using the normal interfaces (restaurantApi, orderApi, etc.). Thank you in advance for adding tests for your features!
 
+For the backend:
+To add a new test to the back-end, create a new test file under backend/src/test/java/ that mirrors the package structure of the file being tested.
+
+Test classes should follow the naming convention:
+-ClassNameTest for unit tests
+-ClassNameIT_CI for integration tests and to have them add to the CI for github
+
+Backend tests are written using JUnit and Mockito. We follow standard JUnit testing patterns. Unit tests should isolate business logic in: Services, The batching algorithm, The batching manager, The database manager 
+
+Controller tests should verify HTTP behavior and response correctness. When testing components that depend on external services (such as Twilio), those services should be mocked rather than invoked directly.
+
+If a test requires database interaction, ensure the database is running before executing integration tests. All new backend features must include corresponding tests before being merged into main. Please follow existing test structure and naming conventions for consistency.
+
 
 ## 6. How to build a release of the software
-Still filling in
+Releases must be built from the main branch after all changes have been merged and validated. Before building a release, developers must ensure that all backend and frontend tests pass and that the application runs successfully in a local development environment.
+
+Prior to packaging the release, update the version in the documentation.
 
