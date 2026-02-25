@@ -3,17 +3,17 @@ import {RestaurantContext} from './RestaurantProvider';
 import type {Restaurant} from '~/domain/objects';
 
 class RefreshMonitor extends EventTarget {
-  private socket: WebSocket;
+  private eventSource: EventSource;
 
   constructor(restaurant: Restaurant['id']) {
     super();
-    this.socket = new WebSocket(`/topic/orders/${restaurant.id}`);
-    this.socket.addEventListener('message', () => {
+    this.eventSource = new EventSource(`/topic/orders/${restaurant.id}`);
+    this.eventSource.addEventListener('message', () => {
       this.dispatchEvent(new Event('orderUpdate'));
     });
   }
   close() {
-    this.socket.close();
+    this.eventSource.close();
   }
 }
 
