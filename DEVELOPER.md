@@ -56,7 +56,9 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 ```
 
-We follow the typical patterns for these tools, whose documentation websites can be found here for Vitest and here for RTL. Just like the rest of the front-end, please follow the Google TypeScript Style Guide.
+We follow the typical patterns for these tools, whose documentation websites can be found [here for Vitest](https://vitest.dev) and [here for RTL](https://testing-library.com/docs/react-testing-library/intro/) like the rest of the front-end, please follow the Google TypeScript Style Guide.
+
+Typescript guide can be found here: https://google.github.io/styleguide/tsguide.html
 
 Miscellaneous Advice: re-usable mock domain objects (Orders, Drivers, etc.) can be found in frontend/test/mocks/domain_objects.ts, and due to our mocking system, back-end API calls can be made using the normal interfaces (restaurantApi, orderApi, etc.). Thank you in advance for adding tests for your features!
 
