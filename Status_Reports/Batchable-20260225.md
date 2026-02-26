@@ -28,5 +28,5 @@ As a team, we will provide and address peer-review feedback.
 - H: work on the developer guide and testing feedback, time estimate 5-8 hours.
 - Delano: integrate auth and increase backend coverage if needed, time estimate 10 hrs.
 - Ben: provide feedback on UI and implement unfinished front end features, time estimate 8-10 hours.
-- Zane: work on website functionality feedback, time estimate 5-8 hours.
+- Zane: work on website functionality feedback and pattern match scalability issue from Gist H sent, time estimate 5-8 hours.
 - Qalid: polish Twilio features for a robust user experience, time estimate 5 hours.
