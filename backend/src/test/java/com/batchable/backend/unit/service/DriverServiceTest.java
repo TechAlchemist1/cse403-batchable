@@ -8,9 +8,13 @@ import com.batchable.backend.db.dao.BatchDAO;
 import com.batchable.backend.db.dao.DriverDAO;
 import com.batchable.backend.db.models.Batch;
 import com.batchable.backend.db.models.Driver;
+import com.batchable.backend.db.models.Order;
+import com.batchable.backend.db.models.Order.State;
+import com.batchable.backend.service.DbOrderService;
 import com.batchable.backend.service.DriverService;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,13 +34,15 @@ public class DriverServiceTest {
   private DriverDAO driverDAO;
   @Mock
   private BatchDAO batchDAO;
+  @Mock
+  private DbOrderService dbOrderService;
 
   private DriverService service;
 
   @BeforeEach
   void setUp() {
     MockitoAnnotations.openMocks(this);
-    service = new DriverService(driverDAO, batchDAO);
+    service = new DriverService(driverDAO, batchDAO, dbOrderService);
   }
 
   // ---------------- createDriver ----------------
@@ -124,7 +130,7 @@ public class DriverServiceTest {
     InOrder inOrder = inOrder(driverDAO);
     inOrder.verify(driverDAO).getDriver(50L);
     inOrder.verify(driverDAO).updateDriver(50L, "Bob", "206-555-2222");
-  
+
   }
 
   /** Tests that updateDriver rejects null, non‑positive ID, blank name, or invalid phone. */
@@ -333,5 +339,221 @@ public class DriverServiceTest {
 
     verify(driverDAO).getDriver(1L);
     verify(batchDAO).getBatchForDriver(1L);
+  }
+
+  // ---------------- getDriverByToken ----------------
+
+  /** Verifies that a driver can be retrieved by a valid UUID token. */
+  @Test
+  void getDriverByToken_happyPath() throws Exception {
+    Driver d = new Driver(1, 10, "Alice", "206-555-0101", false);
+    when(driverDAO.getDriverByToken("valid-token")).thenReturn(Optional.of(d));
+
+    Driver got = service.getDriverByToken("valid-token");
+
+    assertEquals(1L, got.id);
+    verify(driverDAO).getDriverByToken("valid-token");
+  }
+
+  /** Rejects null or empty token. */
+  @Test
+  void getDriverByToken_invalidToken_throws() {
+    assertThrows(IllegalArgumentException.class, () -> service.getDriverByToken(null));
+    assertThrows(IllegalArgumentException.class, () -> service.getDriverByToken(""));
+    verifyNoInteractions(driverDAO);
+  }
+
+  /** Throws when token does not exist. */
+  @Test
+  void getDriverByToken_notFound_throws() throws Exception {
+    when(driverDAO.getDriverByToken("unknown")).thenReturn(Optional.empty());
+
+    assertThrows(IllegalArgumentException.class, () -> service.getDriverByToken("unknown"));
+  }
+
+  /** Wraps SQLException in RuntimeException. */
+  @Test
+  void getDriverByToken_sqlException_wrapped() throws Exception {
+    when(driverDAO.getDriverByToken("token")).thenThrow(new SQLException("db error"));
+
+    RuntimeException ex =
+        assertThrows(RuntimeException.class, () -> service.getDriverByToken("token"));
+    assertTrue(ex.getMessage().contains("Failed to get driver"));
+  }
+
+  // ---------------- handleReturn ----------------
+
+  /** Happy path: driver has a batch, no current order, marks batch finished. */
+  @Test
+  void handleReturn_happyPath_marksBatchFinished() throws Exception {
+    Driver driver = new Driver(1, 10, "Alice", "206-555-0101", true);
+    when(driverDAO.getDriverByToken("token")).thenReturn(Optional.of(driver));
+
+    Batch batch = new Batch(100L, 1L, "poly", Instant.now(), Instant.now(), false);
+    when(batchDAO.getBatchForDriver(1L)).thenReturn(Optional.of(batch));
+
+    // No current order (all delivered)
+    when(driverDAO.getDriver(1L)).thenReturn(Optional.of(driver));
+    when(batchDAO.getBatchForDriver(1L)).thenReturn(Optional.of(batch));
+    
+    when(dbOrderService.getBatchOrders(100L)).thenReturn(List.of()); // empty means none pending
+
+    service.handleReturn("token");
+
+    verify(batchDAO).markBatchFinished(100L);
+  }
+
+  /** Throws if driver still has an undelivered order. */
+  @Test
+  void handleReturn_driverHasCurrentOrder_throws() throws Exception {
+    Driver driver = new Driver(1, 10, "Alice", "206-555-0101", true);
+    when(driverDAO.getDriverByToken("token")).thenReturn(Optional.of(driver));
+
+    Batch batch = new Batch(100L, 1L, "poly", Instant.now(), Instant.now(), false);
+    when(batchDAO.getBatchForDriver(1L)).thenReturn(Optional.of(batch));
+
+    Order pendingOrder = new Order(5, 10, "", "", null, null, null, State.DRIVING, false, 100L);
+    when(driverDAO.getDriver(1L)).thenReturn(Optional.of(driver));
+    when(batchDAO.getBatchForDriver(1L)).thenReturn(Optional.of(batch));
+
+    when(dbOrderService.getBatchOrders(100L)).thenReturn(List.of(pendingOrder));
+
+    IllegalArgumentException ex =
+        assertThrows(IllegalArgumentException.class, () -> service.handleReturn("token"));
+    assertTrue(ex.getMessage().contains("still has orders to deliver"));
+    verify(batchDAO, never()).markBatchFinished(anyLong());
+  }
+
+  /** Throws if driver has no batch at all. */
+  @Test
+  void handleReturn_driverNoBatch_throws() throws Exception {
+    Driver driver = new Driver(1, 10, "Alice", "206-555-0101", true);
+    when(driverDAO.getDriverByToken("token")).thenReturn(Optional.of(driver));
+    when(batchDAO.getBatchForDriver(1L)).thenReturn(Optional.empty());
+
+    assertThrows(IllegalArgumentException.class, () -> service.handleReturn("token"));
+  }
+
+  /** Wraps SQLException from markBatchFinished. */
+  @Test
+  void handleReturn_markBatchFinishedThrowsSQLException() throws Exception {
+    Driver driver = new Driver(1, 10, "Alice", "206-555-0101", true);
+    when(driverDAO.getDriverByToken("token")).thenReturn(Optional.of(driver));
+    // Also stub getDriver for the id check inside getDriverBatch and getCurrentOrderToDeliver
+    when(driverDAO.getDriver(1L)).thenReturn(Optional.of(driver));
+
+    Batch batch = new Batch(100L, 1L, "poly", Instant.now(), Instant.now(), false);
+    when(batchDAO.getBatchForDriver(1L)).thenReturn(Optional.of(batch));
+    when(dbOrderService.getBatchOrders(100L)).thenReturn(List.of());
+    doThrow(new SQLException("mark failed")).when(batchDAO).markBatchFinished(100L);
+
+    RuntimeException ex = assertThrows(RuntimeException.class, () -> service.handleReturn("token"));
+    assertTrue(ex.getMessage().contains("Failed to mark batch finished"));
+  }
+
+  // ---------------- getCurrentOrderToDeliver ----------------
+
+  /** Returns first undelivered order when batch has mixed states. */
+  @Test
+  void getCurrentOrderToDeliver_returnsFirstUndelivered() throws Exception {
+    Driver driver = new Driver(1, 10, "Alice", "206-555-0101", true);
+    when(driverDAO.getDriver(1L)).thenReturn(Optional.of(driver));
+
+    Batch batch = new Batch(100L, 1L, "poly", Instant.now(), Instant.now(), false);
+    when(batchDAO.getBatchForDriver(1L)).thenReturn(Optional.of(batch));
+
+    Order delivered = new Order(1, 10, "addr", "[]", Instant.now(), null, null,
+        Order.State.DELIVERED, false, 100L);
+    Order cooking =
+        new Order(2, 10, "addr", "[]", Instant.now(), null, null, Order.State.COOKING, false, 100L);
+    Order driving =
+        new Order(3, 10, "addr", "[]", Instant.now(), null, null, Order.State.DRIVING, false, 100L);
+
+    when(dbOrderService.getBatchOrders(100L)).thenReturn(List.of(delivered, cooking, driving));
+
+    Order result = service.getCurrentOrderToDeliver(1L);
+
+    assertEquals(cooking, result);
+  }
+
+  /** Returns null if all orders are delivered. */
+  @Test
+  void getCurrentOrderToDeliver_allDelivered_returnsNull() throws Exception {
+    Driver driver = new Driver(1, 10, "Alice", "206-555-0101", true);
+    when(driverDAO.getDriver(1L)).thenReturn(Optional.of(driver));
+
+    Batch batch = new Batch(100L, 1L, "poly", Instant.now(), Instant.now(), false);
+    when(batchDAO.getBatchForDriver(1L)).thenReturn(Optional.of(batch));
+
+    Order delivered1 = new Order(1, 10, "addr", "[]", Instant.now(), null, null,
+        Order.State.DELIVERED, false, 100L);
+    Order delivered2 = new Order(2, 10, "addr", "[]", Instant.now(), null, null,
+        Order.State.DELIVERED, false, 100L);
+    when(dbOrderService.getBatchOrders(100L)).thenReturn(List.of(delivered1, delivered2));
+
+    assertNull(service.getCurrentOrderToDeliver(1L));
+  }
+
+  /** Returns null when batch has no orders (edge case). */
+  @Test
+  void getCurrentOrderToDeliver_emptyBatch_returnsNull() throws Exception {
+    Driver driver = new Driver(1, 10, "Alice", "206-555-0101", true);
+    when(driverDAO.getDriver(1L)).thenReturn(Optional.of(driver));
+
+    Batch batch = new Batch(100L, 1L, "poly", Instant.now(), Instant.now(), false);
+    when(batchDAO.getBatchForDriver(1L)).thenReturn(Optional.of(batch));
+    when(dbOrderService.getBatchOrders(100L)).thenReturn(List.of());
+
+    assertNull(service.getCurrentOrderToDeliver(1L));
+  }
+
+  /** Throws if driver has no batch. */
+  @Test
+  void getCurrentOrderToDeliver_driverNoBatch_throws() throws Exception {
+    Driver driver = new Driver(1, 10, "Alice", "206-555-0101", true);
+    when(driverDAO.getDriver(1L)).thenReturn(Optional.of(driver));
+    when(batchDAO.getBatchForDriver(1L)).thenReturn(Optional.empty());
+
+    assertThrows(IllegalArgumentException.class, () -> service.getCurrentOrderToDeliver(1L));
+  }
+
+  // ---------------- isAvailable ----------------
+
+  /** Available when on shift and no batch. */
+  @Test
+  void isAvailable_onShiftAndNoBatch_true() throws Exception {
+    Driver driver = new Driver(1, 10, "Alice", "206-555-0101", true);
+    when(driverDAO.getDriver(1L)).thenReturn(Optional.of(driver));
+    when(batchDAO.getBatchForDriver(1L)).thenReturn(Optional.empty());
+
+    assertTrue(service.isAvailable(1L));
+  }
+
+  /** Not available when off shift. */
+  @Test
+  void isAvailable_offShift_false() throws Exception {
+    Driver driver = new Driver(1, 10, "Alice", "206-555-0101", false);
+    when(driverDAO.getDriver(1L)).thenReturn(Optional.of(driver));
+    // batch existence doesn't matter because off shift already disqualifies
+    when(batchDAO.getBatchForDriver(1L)).thenReturn(Optional.empty());
+
+    assertFalse(service.isAvailable(1L));
+  }
+
+  /** Not available when on shift but has a batch. */
+  @Test
+  void isAvailable_onShiftButHasBatch_false() throws Exception {
+    Driver driver = new Driver(1, 10, "Alice", "206-555-0101", true);
+    when(driverDAO.getDriver(1L)).thenReturn(Optional.of(driver));
+    when(batchDAO.getBatchForDriver(1L)).thenReturn(Optional.of(new Batch(2, 1, "", null, null, false)));
+
+    assertFalse(service.isAvailable(1L));
+  }
+
+  /** Propagates exception if driver not found. */
+  @Test
+  void isAvailable_driverNotFound_throws() throws Exception {
+    when(driverDAO.getDriver(99L)).thenReturn(Optional.empty());
+    assertThrows(IllegalArgumentException.class, () -> service.isAvailable(99L));
   }
 }
