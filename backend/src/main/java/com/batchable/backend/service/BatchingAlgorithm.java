@@ -199,7 +199,6 @@ public class BatchingAlgorithm {
    */
   public void addOrder(final List<TentativeBatch> batches, final Order order,
       String restaurantAddress) {
-    Instant now = Instant.now();
     if (order.initialTime.isAfter(order.cookedTime)
         || order.cookedTime.isAfter(order.deliveryTime)) {
       throw new IllegalStateException(
