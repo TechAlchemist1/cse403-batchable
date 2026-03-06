@@ -7,6 +7,18 @@ class OrderApi extends CrudApi<Order> {
   constructor() {
     super('/order', json.order);
   }
+  async markDelivered({id}: Order['id'], driverToken: string) {
+    try {
+      await fetchEndpoint(
+        'PUT',
+        `${this.resource}/${id}/delivered/${driverToken}`,
+      );
+      return true;
+    } catch (err) {
+      this.error(`Failed to mark order as delivered; id=${id}`, err);
+      return false;
+    }
+  }
   async advanceState({id}: Order['id']) {
     try {
       await fetchEndpoint('PUT', `${this.resource}/${id}/advance`);
