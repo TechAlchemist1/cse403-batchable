@@ -4,7 +4,10 @@ import com.batchable.backend.db.dao.BatchDAO;
 import com.batchable.backend.db.dao.DriverDAO;
 import com.batchable.backend.db.models.Batch;
 import com.batchable.backend.db.models.Driver;
+import com.batchable.backend.db.models.Order;
+import com.batchable.backend.db.models.Order.State;
 import java.sql.SQLException;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
 
@@ -16,12 +19,14 @@ import org.springframework.stereotype.Service;
 @Service
 public class DriverService {
 
+  private final DbOrderService dbOrderService;
   private final DriverDAO driverDAO;
   private final BatchDAO batchDAO;
 
-  public DriverService(DriverDAO driverDAO, BatchDAO batchDAO) {
+  public DriverService(DriverDAO driverDAO, BatchDAO batchDAO, DbOrderService dbOrderService) {
     this.driverDAO = driverDAO;
     this.batchDAO = batchDAO;
+    this.dbOrderService = dbOrderService;
   }
 
   /** Creates a new driver in the system. */
@@ -128,6 +133,54 @@ public class DriverService {
     }
   }
 
+  /**
+   * Handles the return of a driver to the restaurant after finishing their batch by
+   * marking their batch as finished
+   *
+   * @param token the UUID of the driver
+   * @throws RuntimeException if the driver's batch cannot be marked finished
+   * 
+   */
+  public void handleReturn(String token) {
+    Driver driver = getDriverByToken(token);
+    if (getCurrentOrderToDeliver(driver.id) != null) {
+      throw new IllegalArgumentException("Driver specified by the given token still has orders to deliver");
+    }
+
+    Batch batch = getDriverBatch(driver.id).orElseThrow(() -> new IllegalArgumentException(
+            "Driver " + driver.id + " does not have an assigned batch"));
+    try {
+      batchDAO.markBatchFinished(batch.id);
+    } catch (SQLException e) {
+      throw new RuntimeException("Failed to mark batch finished " + batch.id, e);
+    }
+  }
+
+  /**
+   * Returns the next order in the given driver's batch that still needs to be delivered.
+   *
+   * Assumes that getBatchOrders(batch.id) returns orders in delivery order. The method scans the
+   * batch and returns the first order whose state is not DELIVERED. If all orders have already been
+   * delivered, the method returns null.
+   *
+   * @param driverId the id of the driver we are finding the next order to deliver for
+   * @return the next order that should be delivered, or null if the batch is fully delivered
+   * @throws IllegalArgumentException if the driver does not have a currently assigned batch
+   */
+  public Order getCurrentOrderToDeliver(long driverId) {
+    Batch batch = getDriverBatch(driverId).orElseThrow(() -> new IllegalArgumentException(
+            "Driver " + driverId + " does not have an assigned batch"));
+    List<Order> batchOrders = dbOrderService.getBatchOrders(batch.id);
+
+    // Use the invariant that they are in the order of delivery
+    for (Order order : batchOrders) {
+      if (order.state != State.DELIVERED) {
+        return order;
+      }
+    }
+    return null;
+  }
+
   /** Returns whether the given driver (specified by id) is available to drive a batch */
   public boolean isAvailable(long driverId) {
     Driver driver = getDriver(driverId);
@@ -170,7 +223,7 @@ public class DriverService {
     }
   }
 
-  /** Returns the most recent batch currently assigned to this driver (per your DAO). */
+  /** Returns the batch currently assigned to the driver */
   public Optional<Batch> getDriverBatch(long driverId) {
     if (driverId <= 0) throw new IllegalArgumentException("driverId must be positive");
 

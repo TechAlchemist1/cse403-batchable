@@ -118,4 +118,16 @@ public class DriverController {
   public Batch getDriverBatch(@PathVariable long driverId) {
     return driverService.getDriverBatch(driverId).orElse(null);
   }
+
+  /**
+   * Handles the return of a driver to the restaurant after finishing their batch by
+   * marking their batch as finished
+   *
+   * @param token the UUID of the driver
+   */
+  @PutMapping("/returned/{token}")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void handleReturn(@PathVariable String token) {
+    driverService.handleReturn(token);
+  }
 }

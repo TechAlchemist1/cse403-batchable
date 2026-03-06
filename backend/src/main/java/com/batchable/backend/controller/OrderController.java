@@ -54,6 +54,19 @@ public class OrderController {
   }
 
   /**
+   * Mark an order as delivered.
+   *
+   * PUT /order/{orderId}/delivered/{token}
+   *
+   * @param orderId the ID of the order
+   */
+  @PutMapping("/{orderId}/delivered/{token}")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void markDelivered(@PathVariable long orderId, @PathVariable String token) {
+    orderService.markDelivered(orderId, token);
+  }
+
+  /**
    * Update the cooked time for an order.
    *
    * PUT /order/{orderId}/cookedTime Body: JSON containing an ISO-8601 timestamp

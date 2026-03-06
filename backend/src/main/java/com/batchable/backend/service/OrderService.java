@@ -1,6 +1,7 @@
 package com.batchable.backend.service;
 
 import com.batchable.backend.db.models.Batch;
+import com.batchable.backend.db.models.Driver;
 import com.batchable.backend.db.models.Order;
 import com.batchable.backend.db.models.Order.State;
 import java.time.Instant;
@@ -13,12 +14,16 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class OrderService {
+
+  private final DriverService driverService;
   private final DbOrderService dbOrderService;
   private final BatchingManager batchingManager;
 
-  public OrderService(DbOrderService dbOrderService, BatchingManager batchingManager) {
+  public OrderService(DbOrderService dbOrderService, BatchingManager batchingManager,
+      DriverService driverService) {
     this.dbOrderService = dbOrderService;
     this.batchingManager = batchingManager;
+    this.driverService = driverService;
   }
 
   /**
@@ -45,6 +50,32 @@ public class OrderService {
       throw new IllegalArgumentException(
           "Front-end cannot advance order state past cooked. Order id " + order.id);
     }
+    dbOrderService.advanceOrderState(orderId);
+    batchingManager.updateOrder(orderId, false);
+  }
+
+  /**
+   * Marks an order as delivered.
+   *
+   * @param orderId ID of the order to mark delivered
+   * @param token UUID identifying the driver delivering the order
+   * @throws IllegalArgumentException if the driver is not delivering the order or the current order
+   *         they are delivering does not match the given one
+   */
+  public void markDelivered(long orderId, String token) {
+    Order order = dbOrderService.getOrder(orderId);
+    Driver driver = driverService.getDriverByToken(token);
+    Order currentOrderToDeliver = driverService.getCurrentOrderToDeliver(driver.id);
+    if (currentOrderToDeliver == null || currentOrderToDeliver.id != orderId) {
+      throw new IllegalArgumentException("Driver specified has delivered all batch orders or "
+          + "their next order to deliver does not match the given id " + orderId);
+    }
+
+    if (order.state != State.DRIVING) {
+      throw new IllegalStateException(
+          "Order id " + orderId + " is being delivered but has non-driving state");
+    }
+
     dbOrderService.advanceOrderState(orderId);
     batchingManager.updateOrder(orderId, false);
   }
