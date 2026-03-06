@@ -363,16 +363,16 @@ public class OrderServiceTest {
     Instant in20min = now.plus(Duration.ofMinutes(20));
     Instant in5min = now.plus(Duration.ofMinutes(5));
 
-    Order o = order(5, 7, "Dest", "[]", Instant.now(), in20min,
-        in5min, Order.State.DRIVING, false, 10L);
+    Order o =
+        order(5, 7, "Dest", "[]", Instant.now(), in20min, in5min, Order.State.DRIVING, false, 10L);
     when(orderDAO.getOrder(5L)).thenReturn(Optional.of(o));
-    when(orderDAO.remakeOrder(eq(5L), eq(Order.State.COOKING), 
-        any(Instant.class), any(Instant.class), any(Instant.class), eq(true))).thenReturn(true);
+    when(orderDAO.remakeOrder(eq(5L), eq(Order.State.COOKING), any(Instant.class),
+        any(Instant.class), any(Instant.class), eq(true))).thenReturn(true);
 
     service.remakeOrder(5L);
 
-    verify(orderDAO).remakeOrder(eq(5L), eq(Order.State.COOKING), 
-        any(Instant.class), any(Instant.class), any(Instant.class), eq(true));
+    verify(orderDAO).remakeOrder(eq(5L), eq(Order.State.COOKING), any(Instant.class),
+        any(Instant.class), any(Instant.class), eq(true));
     verify(publisher).refreshOrderData(7L);
   }
 
@@ -556,5 +556,191 @@ public class OrderServiceTest {
     assertTrue(ex.getCause() instanceof SQLException);
 
     verify(publisher, never()).refreshOrderData(7L);
+  }
+  // ---- updateOrderDeliveryTime ----
+
+  /** Verifies that updateOrderDeliveryTime rejects a null delivery time. */
+  @Test
+  void updateOrderDeliveryTime_null_throwsIAE() {
+    assertThrows(IllegalArgumentException.class, () -> service.updateOrderDeliveryTime(1L, null));
+    verifyNoInteractions(orderDAO, batchDAO, publisher);
+  }
+
+  /** Verifies that updateOrderDeliveryTime throws when the order is DELIVERED. */
+  @Test
+  void updateOrderDeliveryTime_delivered_throwsISE() throws Exception {
+    Instant t0 = Instant.parse("2026-02-16T00:00:00Z");
+    Instant cooked = t0.plusSeconds(30); // before deliveryTime
+    Order o = order(5, 7, "Dest", "[]", t0, null, cooked, Order.State.DELIVERED, true, null);
+    when(orderDAO.getOrder(5L)).thenReturn(Optional.of(o));
+
+    assertThrows(IllegalStateException.class,
+        () -> service.updateOrderDeliveryTime(5L, t0.plusSeconds(60)));
+
+    verify(orderDAO).getOrder(5L);
+    verifyNoMoreInteractions(orderDAO);
+    verifyNoInteractions(publisher, batchDAO);
+  }
+
+  /** Verifies that delivery time cannot be before cooked time. */
+  @Test
+  void updateOrderDeliveryTime_beforeCooked_throwsIAE() throws Exception {
+    Instant t0 = Instant.parse("2026-02-16T00:00:00Z");
+    Instant cooked = t0.plusSeconds(600);
+    Instant delivery = t0.plusSeconds(300); // before cooked
+    Order o = order(5, 7, "Dest", "[]", t0, null, cooked, Order.State.COOKED, true, null);
+    when(orderDAO.getOrder(5L)).thenReturn(Optional.of(o));
+
+    assertThrows(IllegalArgumentException.class,
+        () -> service.updateOrderDeliveryTime(5L, delivery));
+
+    verify(orderDAO).getOrder(5L);
+    verifyNoMoreInteractions(orderDAO);
+    verifyNoInteractions(publisher, batchDAO);
+  }
+
+  /** Verifies that a valid delivery time update succeeds and triggers a WebSocket refresh. */
+  @Test
+  void updateOrderDeliveryTime_happyPath_updates_andRefreshes() throws Exception {
+    Instant t0 = Instant.parse("2026-02-16T00:00:00Z");
+    Instant cooked = t0.plusSeconds(600);
+    Instant delivery = t0.plusSeconds(1200);
+    Order o = order(5, 7, "Dest", "[]", t0, null, cooked, Order.State.COOKED, true, null);
+    when(orderDAO.getOrder(5L)).thenReturn(Optional.of(o));
+    when(orderDAO.updateOrderDeliveryTime(5L, delivery)).thenReturn(true);
+
+    service.updateOrderDeliveryTime(5L, delivery);
+
+    verify(orderDAO).updateOrderDeliveryTime(5L, delivery);
+    verify(publisher).refreshOrderData(7L);
+  }
+
+  /** Verifies that a SQLException from updateOrderDeliveryTime is wrapped and no refresh occurs. */
+  @Test
+  void updateOrderDeliveryTime_sqlException_wrapped_andNoRefresh() throws Exception {
+    Instant t0 = Instant.parse("2026-02-16T00:00:00Z");
+    Instant cooked = t0.plusSeconds(600);
+    Instant delivery = t0.plusSeconds(1200);
+    Order o = order(5, 7, "Dest", "[]", t0, null, cooked, Order.State.COOKED, true, null);
+    when(orderDAO.getOrder(5L)).thenReturn(Optional.of(o));
+    when(orderDAO.updateOrderDeliveryTime(anyLong(), any())).thenThrow(new SQLException("boom"));
+
+    RuntimeException ex =
+        assertThrows(RuntimeException.class, () -> service.updateOrderDeliveryTime(5L, delivery));
+    assertTrue(ex.getMessage().contains("Failed to update cooked time")); // Note: method has same
+                                                                          // message
+    assertTrue(ex.getCause() instanceof SQLException);
+
+    verify(publisher, never()).refreshOrderData(7L);
+  }
+
+  // ---- createBatch ----
+
+  /** Verifies that passing null to createBatch throws IllegalArgumentException. */
+  @Test
+  void createBatch_null_throwsIAE() {
+    assertThrows(IllegalArgumentException.class, () -> service.createBatch(null));
+    verifyNoInteractions(orderDAO, batchDAO, publisher);
+  }
+
+  /** Verifies that a batch with missing (zero) driverId is rejected. */
+  @Test
+  void createBatch_missingDriverId_throwsIAE() {
+    Batch b = batch(0, 0); // driverId = 0
+    assertThrows(IllegalArgumentException.class, () -> service.createBatch(b));
+    verifyNoInteractions(batchDAO, publisher);
+  }
+
+  /** Verifies that a batch with blank route is rejected. */
+  @Test
+  void createBatch_blankRoute_throwsIAE() {
+    Batch b = new Batch(0, 1, "   ", Instant.now(), Instant.now().plusSeconds(60), false);
+    assertThrows(IllegalArgumentException.class, () -> service.createBatch(b));
+    verifyNoInteractions(batchDAO, publisher);
+  }
+
+  /** Verifies that a batch with null dispatchTime is rejected. */
+  @Test
+  void createBatch_nullDispatchTime_throwsIAE() {
+    Batch b = new Batch(0, 1, "poly", null, Instant.now().plusSeconds(60), false);
+    assertThrows(IllegalArgumentException.class, () -> service.createBatch(b));
+    verifyNoInteractions(batchDAO, publisher);
+  }
+
+  /** Verifies that a batch with null completionTime is rejected. */
+  @Test
+  void createBatch_nullCompletionTime_throwsIAE() {
+    Batch b = new Batch(0, 1, "poly", Instant.now(), null, false);
+    assertThrows(IllegalArgumentException.class, () -> service.createBatch(b));
+    verifyNoInteractions(batchDAO, publisher);
+  }
+
+  /** Verifies that completionTime before dispatchTime is rejected. */
+  @Test
+  void createBatch_completionBeforeDispatch_throwsIAE() {
+    Instant now = Instant.now();
+    Batch b = new Batch(0, 1, "poly", now, now.minusSeconds(10), false);
+    assertThrows(IllegalArgumentException.class, () -> service.createBatch(b));
+    verifyNoInteractions(batchDAO, publisher);
+  }
+
+  /** Verifies that a batch with a pre‑assigned positive ID is rejected. */
+  @Test
+  void createBatch_positiveId_throwsISE() {
+    Batch b = new Batch(5, 1, "poly", Instant.now(), Instant.now().plusSeconds(60), false);
+    assertThrows(IllegalStateException.class, () -> service.createBatch(b));
+    verifyNoInteractions(batchDAO, publisher);
+  }
+
+  /** Verifies that a valid batch is created and the ID is returned. */
+  @Test
+  void createBatch_happyPath_returnsId() throws Exception {
+    Instant dispatch = Instant.parse("2026-02-16T00:00:00Z");
+    Instant completion = dispatch.plusSeconds(3600);
+    Batch b = new Batch(0, 7, "polyline", dispatch, completion, false);
+
+    when(batchDAO.createBatch(7L, "polyline", dispatch, completion)).thenReturn(99L);
+
+    long id = service.createBatch(b);
+    assertEquals(99L, id);
+
+    verify(batchDAO).createBatch(7L, "polyline", dispatch, completion);
+    // No WebSocket refresh expected for batch creation (not in code)
+    verifyNoInteractions(publisher);
+  }
+
+  /** Verifies that a SQLException from createBatch is wrapped in RuntimeException. */
+  @Test
+  void createBatch_sqlException_wrapped() throws Exception {
+    Instant dispatch = Instant.parse("2026-02-16T00:00:00Z");
+    Instant completion = dispatch.plusSeconds(3600);
+    Batch b = new Batch(0, 7, "polyline", dispatch, completion, false);
+
+    when(batchDAO.createBatch(anyLong(), anyString(), any(), any()))
+        .thenThrow(new SQLException("boom"));
+
+    RuntimeException ex = assertThrows(RuntimeException.class, () -> service.createBatch(b));
+    assertTrue(ex.getMessage().contains("Failed to create batch"));
+    assertTrue(ex.getCause() instanceof SQLException);
+  }
+
+  // ---- removeAllUnfinishedBatches ----
+
+  /** Verifies that removeAllUnfinishedBatches delegates to the DAO. */
+  @Test
+  void removeAllUnfinishedBatches_callsDao() throws Exception {
+    service.removeAllUnfinishedBatches();
+    verify(batchDAO).removeAllUnfinishedBatches();
+  }
+
+  /** Verifies that a SQLException from removeAllUnfinishedBatches is wrapped. */
+  @Test
+  void removeAllUnfinishedBatches_sqlException_wrapped() throws Exception {
+    doThrow(new SQLException("boom")).when(batchDAO).removeAllUnfinishedBatches();
+
+    RuntimeException ex =
+        assertThrows(RuntimeException.class, () -> service.removeAllUnfinishedBatches());
+    assertTrue(ex.getMessage().contains("Failed to remove unfinished batches"));
+    assertTrue(ex.getCause() instanceof SQLException);
   }
 }
