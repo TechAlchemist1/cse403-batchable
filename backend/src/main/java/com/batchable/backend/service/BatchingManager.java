@@ -144,6 +144,7 @@ public class BatchingManager {
       throw new IllegalArgumentException("Cannot remove RestaurantBatchingManager for id "
           + restaurantId + " because it does not exist.");
     }
+    restaurantManagers.get(restaurantId).shutdown();
     restaurantManagers.remove(restaurantId);
   }
 
