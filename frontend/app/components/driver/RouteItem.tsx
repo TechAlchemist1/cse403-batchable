@@ -1,6 +1,6 @@
 import {useContext} from 'react';
 import type {Order} from '~/domain/objects';
-import {DriverTokenContext} from './DriverTokenContext';
+import {DriverTokenContext} from '../DriverTokenContext';
 import Button from '../Button';
 import {formatOrderName} from '~/util/format';
 import {orderApi} from '~/api/endpoints/order';

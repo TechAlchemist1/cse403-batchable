@@ -1,7 +1,7 @@
 import {driverApi} from '~/api/endpoints/driver';
 import Button from '../Button';
 import {useContext} from 'react';
-import {DriverTokenContext} from './DriverTokenContext';
+import {DriverTokenContext} from '../DriverTokenContext';
 
 export default function ReturnedButton() {
   const token = useContext(DriverTokenContext);

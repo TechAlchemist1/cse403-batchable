@@ -4,7 +4,7 @@ import {useLoader} from '~/util/query';
 import {driverApi} from '~/api/endpoints/driver';
 import DriverPage from '~/components/driver/DriverPage';
 import LoadBoundary from '~/components/LoadBoundary';
-import {DriverTokenContext} from '~/components/driver/DriverTokenContext';
+import {DriverTokenContext} from '~/components/DriverTokenContext';
 
 export default function Route({params: {token}}: Route.ComponentProps) {
   const loader = useLoader(async () => {
@@ -14,14 +14,14 @@ export default function Route({params: {token}}: Route.ComponentProps) {
   });
 
   return (
-    <OrderRefreshProvider>
-      <DriverTokenContext value={token}>
+    <DriverTokenContext value={token}>
+      <OrderRefreshProvider useDriverToken>
         <div className="p-5">
           <LoadBoundary loader={loader} name="driver dashboard">
             {driverId => <DriverPage driverId={driverId} />}
           </LoadBoundary>
         </div>
-      </DriverTokenContext>
-    </OrderRefreshProvider>
+      </OrderRefreshProvider>
+    </DriverTokenContext>
   );
 }
