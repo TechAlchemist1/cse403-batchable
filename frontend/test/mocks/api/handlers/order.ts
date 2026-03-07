@@ -58,11 +58,12 @@ export const orderHandlers = [
     if (driver.id !== driverId) return badRequest();
 
     // update order state
-    const updatedState = json.order.unparse({
-      ...json.order.parse(order),
-      state: 'delivered',
-    });
-    if (!db.orders.update(updatedState)) {
+    if (
+      !db.orders.update({
+        ...order,
+        state: 'DELIVERED',
+      })
+    ) {
       return badRequest();
     }
 

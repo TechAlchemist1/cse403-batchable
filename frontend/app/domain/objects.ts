@@ -87,6 +87,7 @@ export interface Batch extends DomainObject<'Batch'> {
   route: Polyline;
   dispatchTime: Date;
   expectedCompletionTime: Date;
+  finished: boolean;
 }
 
 export interface MenuItem extends DomainObject<'MenuItem'> {

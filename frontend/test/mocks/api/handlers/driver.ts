@@ -6,11 +6,35 @@ import {
   makeCrudHandlers,
   notFound,
   noContent,
+  badRequest,
 } from '../common';
 import type {Driver} from '~/domain/objects';
+import * as json from '~/domain/json';
+
+function getBatch(driver: json.JSONDomainObject<Driver>) {
+  const batch = db.batches.findMatching('driver', driver.id)[0] ?? null;
+  return batch?.finished ? batch : null;
+}
 
 export const driverHandlers = [
   ...makeCrudHandlers('/driver', db.drivers),
+  http.get(endpoint('/driver/token/:token'), req => {
+    const id = asId<Driver>(req.params.token); // token === id in mock
+    const row = db.drivers.get(id);
+    if (!row) return notFound('driver');
+    return HttpResponse.json(row);
+  }),
+  http.put(endpoint('/driver/returned/:token'), req => {
+    const driver = db.drivers.get(asId<Driver>(req.params.token)); // token === id in mock
+    if (!driver) return notFound('driver');
+    const batch = getBatch(driver);
+    if (!batch) return notFound('batch');
+
+    if (!db.batches.update({...batch, finished: true})) {
+      return badRequest();
+    }
+    return noContent();
+  }),
   http.put(endpoint('/driver/:id/shift'), req => {
     const driver = db.drivers.get(asId<Driver>(req.params.id));
     if (!driver) return notFound('driver');
@@ -22,9 +46,8 @@ export const driverHandlers = [
     return noContent();
   }),
   http.get(endpoint('/driver/:id/batch'), req => {
-    const id = asId<Driver>(req.params.id);
-    if (!db.drivers.get(id)) return notFound('/driver');
-    const batch = db.batches.findMatching('driver', id)[0] ?? null;
-    return HttpResponse.json(batch);
+    const driver = db.drivers.get(asId<Driver>(req.params.id));
+    if (!driver) return notFound('driver');
+    return HttpResponse.json(getBatch(driver));
   }),
 ];
