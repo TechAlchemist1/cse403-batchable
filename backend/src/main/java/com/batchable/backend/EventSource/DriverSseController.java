@@ -26,9 +26,9 @@ public class DriverSseController {
   private final Map<Long, List<SseEmitter>> emitters =
       new ConcurrentHashMap<Long, List<SseEmitter>>();
 
-    DriverSseController(DriverService driverService) {
-        this.driverService = driverService;
-    }
+  public DriverSseController(DriverService driverService) {
+      this.driverService = driverService;
+  }
 
   @GetMapping("/sse/orders/token/{token}")
   public SseEmitter subscribe(@PathVariable String token) {
