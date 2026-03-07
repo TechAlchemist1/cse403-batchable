@@ -82,7 +82,7 @@ class TwilioManagerTest {
             mockedStatic.verify(() -> Message.creator(toPhoneCaptor.capture(), fromPhoneCaptor.capture(), messageBodyCaptor.capture()));
             assertEquals(driverPhoneNumber, toPhoneCaptor.getValue().getEndpoint());
             assertEquals(fromPhoneNumber, fromPhoneCaptor.getValue().getEndpoint());
-            String expectedMessage = "Driver named John Doe with id 42 you have been assigned a new batch. View here http://localhost:5173/route/" + driverToken;
+            String expectedMessage = "Driver John Doe (id 42) you have been assigned a new batch. View here http://localhost:5173/route/" + driverToken;
             assertEquals(expectedMessage, messageBodyCaptor.getValue());
 
             // Verify SSE update was triggered (via handleBatchChange)

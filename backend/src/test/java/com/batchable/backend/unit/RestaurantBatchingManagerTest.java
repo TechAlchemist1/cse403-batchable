@@ -407,7 +407,7 @@ class RestaurantBatchingManagerTest {
     verify(dbOrderService, never()).updateOrderDeliveryTime(anyLong(), any());
     verify(dbOrderService, never()).updateOrderCookedTime(anyLong(), any());
     verify(batchingAlgorithm, never()).addOrder(anyList(), any(), anyString());
-    verify(publisher).refreshOrderData(RESTAURANT_ID);
+    verify(publisher, times(2)).refreshOrderData(RESTAURANT_ID);
   }
 
   /**
@@ -453,7 +453,7 @@ class RestaurantBatchingManagerTest {
     verify(dbOrderService).getOrder(2L);
     verify(batchingAlgorithm).addOrder(customBatches.getTentativeBatches(), updatedUncooked,
         ADDRESS);
-    verify(publisher).refreshOrderData(RESTAURANT_ID);
+    verify(publisher, times(2)).refreshOrderData(RESTAURANT_ID);
   }
 
   /** Expired batch with all uncooked: all are delayed and re-added, no ready batch remains. */
@@ -496,7 +496,7 @@ class RestaurantBatchingManagerTest {
     verify(batchingAlgorithm).addOrder(customBatches.getTentativeBatches(), updated1, ADDRESS);
     verify(batchingAlgorithm).addOrder(customBatches.getTentativeBatches(), updated2, ADDRESS);
     assertTrue(result.getReadyBatches().isEmpty());
-    verify(publisher).refreshOrderData(RESTAURANT_ID);
+    verify(publisher, times(2)).refreshOrderData(RESTAURANT_ID);
   }
 
   /** Only expired batches are processed; future batches remain untouched. */
@@ -535,7 +535,7 @@ class RestaurantBatchingManagerTest {
     assertEquals(0, result.getActiveBatches().size());
     assertEquals(1, result.getReadyBatches().size());
     assertEquals(expiredOrder, result.getReadyBatches().peek().getBatch().get(0));
-    verify(publisher).refreshOrderData(RESTAURANT_ID);
+    verify(publisher, times(2)).refreshOrderData(RESTAURANT_ID);
   }
 
   /** Assigns ready batches to available drivers, activates them, and notifies listeners. */
@@ -591,7 +591,7 @@ class RestaurantBatchingManagerTest {
     verify(twilioManager, never()).handleBatchChange(anyLong()); // change listener not
                                                                               // called during
     // activation
-    verify(publisher).refreshOrderData(RESTAURANT_ID);
+    verify(publisher, times(2)).refreshOrderData(RESTAURANT_ID);
   }
 
   /** When no drivers are available, ready batches are left and not assigned. */
@@ -623,7 +623,7 @@ class RestaurantBatchingManagerTest {
 
     verify(dbOrderService, never()).setOrderBatchId(anyLong(), anyLong());
     verify(dbOrderService, never()).createBatch(any());
-    verify(publisher).refreshOrderData(RESTAURANT_ID);
+    verify(publisher, times(2)).refreshOrderData(RESTAURANT_ID);
   }
 
   /** Unassigned ready batches have their delivery times delayed. */
@@ -657,7 +657,7 @@ class RestaurantBatchingManagerTest {
 
     Batches result = spyMgr.getBatches();
     assertEquals(updatedOrder, result.getReadyBatches().peek().getBatch().get(0));
-    verify(publisher).refreshOrderData(RESTAURANT_ID);
+    verify(publisher, times(2)).refreshOrderData(RESTAURANT_ID);
   }
 
   /** Batch become‑active listener is invoked when a batch is activated. */
@@ -690,7 +690,7 @@ class RestaurantBatchingManagerTest {
     mgr.checkExpiredBatches(UPDATE_MILLIS);
 
     verify(twilioManager).handleNewBatch(100L);
-    verify(publisher).refreshOrderData(RESTAURANT_ID);
+    verify(publisher, times(2)).refreshOrderData(RESTAURANT_ID);
   }
 
   /** RemoveUncookedOrders handles illegal order states and throws appropriate exception. */
@@ -741,7 +741,7 @@ class RestaurantBatchingManagerTest {
     verifyOrderDelayed(order, order.deliveryTime, order.cookedTime);
 
     verify(dbOrderService).updateOrderDeliveryTime(eq(1L), instantCaptor.capture());
-    verify(publisher).refreshOrderData(RESTAURANT_ID);
+    verify(publisher, times(2)).refreshOrderData(RESTAURANT_ID);
   }
 
   /** Full end‑to‑end test with multiple batches, expired and future, and driver assignment. */
@@ -815,7 +815,7 @@ class RestaurantBatchingManagerTest {
     verify(dbOrderService).getOrder(1L);
     verify(dbOrderService).updateOrderDeliveryTime(eq(2L), any());
     verify(dbOrderService).updateOrderCookedTime(eq(2L), any());
-    verify(publisher).refreshOrderData(RESTAURANT_ID);
+    verify(publisher, times(2)).refreshOrderData(RESTAURANT_ID);
   }
 
   /** Constructor creates empty Batches when null is passed. */

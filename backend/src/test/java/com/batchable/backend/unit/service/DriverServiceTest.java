@@ -10,12 +10,14 @@ import com.batchable.backend.db.models.Batch;
 import com.batchable.backend.db.models.Driver;
 import com.batchable.backend.db.models.Order;
 import com.batchable.backend.db.models.Order.State;
+import com.batchable.backend.db.models.Restaurant;
 import com.batchable.backend.service.DbOrderService;
 import com.batchable.backend.service.DriverService;
 import com.batchable.backend.service.RestaurantService;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -384,7 +386,172 @@ public class DriverServiceTest {
     assertTrue(ex.getMessage().contains("Failed to get driver"));
   }
 
-  // ---------------- handleReturn ----------------
+  // ---------------- getDriverToken (new tests) ----------------
+
+  /** Verifies that getDriverToken returns the token string when driver exists. */
+  @Test
+  void getDriverToken_happyPath() throws Exception {
+    when(driverDAO.getDriverToken(1L)).thenReturn(Optional.of("abc-123"));
+
+    String token = service.getDriverToken(1L);
+    assertEquals("abc-123", token);
+    verify(driverDAO).getDriverToken(1L);
+  }
+
+  /** Rejects non-positive driver ID. */
+  @Test
+  void getDriverToken_invalidId_throws() {
+    assertThrows(IllegalArgumentException.class, () -> service.getDriverToken(0L));
+    assertThrows(IllegalArgumentException.class, () -> service.getDriverToken(-5L));
+    verifyNoInteractions(driverDAO);
+  }
+
+  /** Throws if driver not found (token absent). */
+  @Test
+  void getDriverToken_notFound_throws() throws Exception {
+    when(driverDAO.getDriverToken(99L)).thenReturn(Optional.empty());
+
+    assertThrows(IllegalArgumentException.class, () -> service.getDriverToken(99L));
+  }
+
+  /** Wraps SQLException. */
+  @Test
+  void getDriverToken_sqlException_wrapped() throws Exception {
+    when(driverDAO.getDriverToken(1L)).thenThrow(new SQLException("db error"));
+
+    RuntimeException ex = assertThrows(RuntimeException.class, () -> service.getDriverToken(1L));
+    assertTrue(ex.getMessage().contains("Failed to get driver"));
+  }
+
+  // ---------------- getDriverPageData (new tests) ----------------
+
+  /** Test getDriverPageData when driver has a batch with undelivered orders. */
+  @Test
+  void getDriverPageData_withBatchAndOrders() throws Exception {
+    // Given
+    Driver driver = new Driver(1, 10, "Alice", "206-555-0101", true);
+    when(driverDAO.getDriverByToken("token")).thenReturn(Optional.of(driver));
+    when(driverDAO.getDriver(1L)).thenReturn(Optional.of(driver));
+
+    Batch batch = new Batch(100L, 1L, "poly", Instant.now(), Instant.now(), false);
+    when(batchDAO.getBatchForDriver(1L)).thenReturn(Optional.of(batch));
+
+    Restaurant restaurant = new Restaurant(10L, "Restaurant", "123 Main St");
+    when(restaurantService.getRestaurant(10L)).thenReturn(restaurant);
+
+    Order order1 =
+        new Order(1, 10, "addr1", "[]", Instant.now(), null, null, State.DRIVING, false, 100L);
+    Order order2 =
+        new Order(2, 10, "addr2", "[]", Instant.now(), null, null, State.COOKING, false, 100L);
+    when(dbOrderService.getBatchOrders(100L)).thenReturn(List.of(order1, order2));
+
+    // When
+    Map<String, Object> result = service.getDriverPageData("token");
+
+    // Then
+    assertEquals(driver, result.get("driver"));
+    assertEquals(Optional.of(List.of(order1, order2)), result.get("orders"));
+    assertTrue(result.get("mapLink") instanceof Optional);
+    Optional<String> mapLink = (Optional<String>) result.get("mapLink");
+    assertTrue(mapLink.isPresent());
+    String url = mapLink.get();
+    assertTrue(url.contains("origin=Current+Location"));
+    assertTrue(url.contains("destination=123+Main+St"));
+    assertTrue(url.contains("waypoints=addr1|addr2") || url.contains("waypoints=addr1%7Caddr2"));
+  }
+
+  /** Test getDriverPageData when driver has a batch but all orders are delivered. */
+  @Test
+  void getDriverPageData_withBatchAllDelivered() throws Exception {
+    Driver driver = new Driver(1, 10, "Alice", "206-555-0101", true);
+    when(driverDAO.getDriverByToken("token")).thenReturn(Optional.of(driver));
+    when(driverDAO.getDriver(1L)).thenReturn(Optional.of(driver));
+
+    Batch batch = new Batch(100L, 1L, "poly", Instant.now(), Instant.now(), false);
+    when(batchDAO.getBatchForDriver(1L)).thenReturn(Optional.of(batch));
+
+    Restaurant restaurant = new Restaurant(10L, "Restaurant", "123 Main St");
+    when(restaurantService.getRestaurant(10L)).thenReturn(restaurant);
+
+    Order order1 =
+        new Order(1, 10, "addr1", "[]", Instant.now(), null, null, State.DELIVERED, false, 100L);
+    Order order2 =
+        new Order(2, 10, "addr2", "[]", Instant.now(), null, null, State.DELIVERED, false, 100L);
+    when(dbOrderService.getBatchOrders(100L)).thenReturn(List.of(order1, order2));
+
+    Map<String, Object> result = service.getDriverPageData("token");
+
+    assertEquals(Optional.of(List.of(order1, order2)), result.get("orders")); // orders still
+                                                                              // returned
+    Optional<String> mapLink = (Optional<String>) result.get("mapLink");
+    assertTrue(mapLink.isPresent());
+    String url = mapLink.get();
+    // No waypoints because all orders are filtered out
+    assertFalse(url.contains("waypoints"));
+  }
+
+  /** Test getDriverPageData when driver has no batch. */
+  @Test
+  void getDriverPageData_withoutBatch() throws Exception {
+    Driver driver = new Driver(1, 10, "Alice", "206-555-0101", true);
+    when(driverDAO.getDriverByToken("token")).thenReturn(Optional.of(driver));
+    when(driverDAO.getDriver(1L)).thenReturn(Optional.of(driver));
+    when(batchDAO.getBatchForDriver(1L)).thenReturn(Optional.empty());
+
+    Map<String, Object> result = service.getDriverPageData("token");
+
+    assertEquals(driver, result.get("driver"));
+    assertEquals(Optional.empty(), result.get("orders"));
+    assertEquals(Optional.empty(), result.get("mapLink"));
+  }
+
+  // ---------------- getRouteLink (new tests) ----------------
+
+  /** Basic route link with multiple undelivered orders. */
+  @Test
+  void getRouteLink_basic() {
+    String restaurantAddress = "123 Main St, Seattle WA";
+    Order o1 =
+        new Order(1, 10, "addr1", "[]", Instant.now(), null, null, State.DRIVING, false, null);
+    Order o2 =
+        new Order(2, 10, "addr2", "[]", Instant.now(), null, null, State.COOKING, false, null);
+    List<Order> orders = List.of(o1, o2);
+
+    String url = service.getRouteLink(orders, restaurantAddress);
+
+    assertTrue(url.startsWith("https://www.google.com/maps/dir/?api=1"));
+    assertTrue(url.contains("origin=Current+Location"));
+    assertTrue(url.contains("destination=123+Main+St%2C+Seattle+WA"));
+    // Waypoints should be addr1|addr2 (URL encoded)
+    assertTrue(url.contains("waypoints=addr1%7Caddr2") || url.contains("waypoints=addr1|addr2"));
+  }
+
+  /** Route link when all orders are delivered – no waypoints. */
+  @Test
+  void getRouteLink_allDelivered() {
+    String restaurantAddress = "123 Main St";
+    Order o1 =
+        new Order(1, 10, "addr1", "[]", Instant.now(), null, null, State.DELIVERED, false, null);
+    Order o2 =
+        new Order(2, 10, "addr2", "[]", Instant.now(), null, null, State.DELIVERED, false, null);
+    List<Order> orders = List.of(o1, o2);
+
+    String url = service.getRouteLink(orders, restaurantAddress);
+
+    assertTrue(url.contains("destination=123+Main+St"));
+    assertFalse(url.contains("waypoints"));
+  }
+
+  /** Route link with empty orders list. */
+  @Test
+  void getRouteLink_emptyOrders() {
+    String restaurantAddress = "123 Main St";
+    String url = service.getRouteLink(List.of(), restaurantAddress);
+    assertTrue(url.contains("destination=123+Main+St"));
+    assertFalse(url.contains("waypoints"));
+  }
+
+  // ---------------- handleReturn (existing tests) ----------------
 
   /** Happy path: driver has a batch, no current order, marks batch finished. */
   @Test
@@ -398,7 +565,7 @@ public class DriverServiceTest {
     // No current order (all delivered)
     when(driverDAO.getDriver(1L)).thenReturn(Optional.of(driver));
     when(batchDAO.getBatchForDriver(1L)).thenReturn(Optional.of(batch));
-    
+
     when(dbOrderService.getBatchOrders(100L)).thenReturn(List.of()); // empty means none pending
 
     service.handleReturn("token");
@@ -454,7 +621,7 @@ public class DriverServiceTest {
     assertTrue(ex.getMessage().contains("Failed to mark batch finished"));
   }
 
-  // ---------------- getCurrentOrderToDeliver ----------------
+  // ---------------- getCurrentOrderToDeliver (existing tests) ----------------
 
   /** Returns first undelivered order when batch has mixed states. */
   @Test
@@ -520,7 +687,7 @@ public class DriverServiceTest {
     assertThrows(IllegalArgumentException.class, () -> service.getCurrentOrderToDeliver(1L));
   }
 
-  // ---------------- isAvailable ----------------
+  // ---------------- isAvailable (existing tests) ----------------
 
   /** Available when on shift and no batch. */
   @Test
@@ -548,7 +715,8 @@ public class DriverServiceTest {
   void isAvailable_onShiftButHasBatch_false() throws Exception {
     Driver driver = new Driver(1, 10, "Alice", "206-555-0101", true);
     when(driverDAO.getDriver(1L)).thenReturn(Optional.of(driver));
-    when(batchDAO.getBatchForDriver(1L)).thenReturn(Optional.of(new Batch(2, 1, "", null, null, false)));
+    when(batchDAO.getBatchForDriver(1L))
+        .thenReturn(Optional.of(new Batch(2, 1, "", null, null, false)));
 
     assertFalse(service.isAvailable(1L));
   }
