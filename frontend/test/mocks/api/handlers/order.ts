@@ -14,7 +14,7 @@ import * as json from '~/domain/json';
 if (!globalThis.EventSource) {
   // this allows the server-side portion of the MSW SSE mock to run without error
   Object.defineProperty(globalThis, 'EventSource', {
-    value: class EventSource {},
+    value: class EventSource extends EventTarget {},
   });
 }
 
