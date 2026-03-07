@@ -18,11 +18,24 @@ function getBatch(driver: json.JSONDomainObject<Driver>) {
 
 export const driverHandlers = [
   ...makeCrudHandlers('/driver', db.drivers),
-  http.get(endpoint('/driver/token/:token'), req => {
+  http.get(endpoint('/driver/route/:token'), req => {
     const id = asId<Driver>(req.params.token); // token === id in mock
-    const row = db.drivers.get(id);
-    if (!row) return notFound('driver');
-    return HttpResponse.json(row);
+    const driver = db.drivers.get(id);
+    if (!driver) return notFound('driver');
+
+    // get batch
+    const batch = getBatch(driver);
+    if (!batch) return HttpResponse.json({driver, orders: null});
+
+    // get batch orders
+    const orders = db.orders.findAll(
+      order => order.currentBatch?.id === batch.id,
+    );
+    return HttpResponse.json({
+      driver,
+      mapLink: 'https://maps.google.com',
+      orders,
+    });
   }),
   http.put(endpoint('/driver/returned/:token'), req => {
     const driver = db.drivers.get(asId<Driver>(req.params.token)); // token === id in mock

@@ -94,3 +94,9 @@ export interface MenuItem extends DomainObject<'MenuItem'> {
   restaurant: Restaurant['id'];
   name: string;
 }
+
+export interface DriverRoute {
+  driver: Driver;
+  mapLink: string | null;
+  orders: Order[] | null;
+}

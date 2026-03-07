@@ -1,5 +1,5 @@
 import {useContext} from 'react';
-import type {Order} from '~/domain/objects';
+import {type Order} from '~/domain/objects';
 import {DriverTokenContext} from '../DriverTokenContext';
 import Button from '../Button';
 import {formatOrderName} from '~/util/format';
@@ -12,14 +12,18 @@ interface Props {
 export default function RouteItem({order}: Props) {
   const token = useContext(DriverTokenContext);
   const deliverOrder = async () => {
-    if (!token || (await orderApi.markDelivered(order.id, token))) {
+    if (!token || !(await orderApi.markDelivered(order.id, token))) {
       alert('Failed to mark order as delivered');
     }
   };
 
+  const delivered = order.state === 'delivered';
+
   return (
-    <li>
-      <Button onClick={deliverOrder}>Delivered {formatOrderName(order)}</Button>
+    <li className="self-stretch">
+      <Button onClick={delivered ? undefined : deliverOrder} tw="w-full">
+        {delivered ? '✔️ Delivered' : 'Deliver'} {formatOrderName(order)}
+      </Button>
     </li>
   );
 }

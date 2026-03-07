@@ -1,19 +1,25 @@
 import * as json from '~/domain/json';
 import {CrudApi} from '../crud';
-import type {Batch, Driver} from '~/domain/objects';
+import type {Batch, Driver, Order} from '~/domain/objects';
 import {fetchEndpoint, fetchJSON} from '../common';
 
 class DriverApi extends CrudApi<Driver> {
   constructor() {
     super('/driver', json.driver);
   }
-  async fromToken(token: string) {
+  async getRouteInfo(token: string) {
     try {
-      const driver: json.JSONDomainObject<Driver> = await fetchJSON(
-        'GET',
-        `${this.resource}/token/${token}`,
-      );
-      return json.driver.field('id').parse(driver.id);
+      const routeInfo: {
+        driver: json.JSONDomainObject<Driver>;
+        mapLink: string | null;
+        orders: json.JSONDomainObject<Order>[] | null;
+      } = await fetchJSON('GET', `${this.resource}/route/${token}`);
+
+      return {
+        driver: json.driver.parse(routeInfo.driver),
+        mapLink: routeInfo.mapLink,
+        orders: routeInfo.orders?.map(json.order.parse) ?? null,
+      };
     } catch (err) {
       this.error(`Failed to read driver by token; token=${token}`, err);
       return null;

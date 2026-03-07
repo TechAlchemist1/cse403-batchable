@@ -107,7 +107,15 @@ export const orderHandlers = [
     db.orders.addEventListener('change', () => {
       client.send({
         event: 'refresh',
-        data: '<<this should never matter>>',
+        data: '<<this should never matter/restaurant>>',
+      });
+    });
+  }),
+  sse<{refresh: string}>('/sse/orders/token/:token', async ({client}) => {
+    db.orders.addEventListener('change', () => {
+      client.send({
+        event: 'refresh',
+        data: '<<this should never matter/driver>>',
       });
     });
   }),

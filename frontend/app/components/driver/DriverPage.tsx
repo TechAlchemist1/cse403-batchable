@@ -1,16 +1,40 @@
-import type {Driver} from '~/domain/objects';
 import RouteOverview from './RouteOverview';
 import RouteHeader from './RouteHeader';
+import {useContext, useEffect} from 'react';
+import {OrderRefreshContext} from '../OrderRefreshProvider';
+import {useLoader} from '~/util/query';
+import {driverApi} from '~/api/endpoints/driver';
+import {DriverTokenContext} from '../DriverTokenContext';
+import LoadBoundary from '../LoadBoundary';
 
-interface Props {
-  driverId: Driver['id'];
-}
+export default function DriverPage() {
+  const refresher = useContext(OrderRefreshContext);
+  const token = useContext(DriverTokenContext);
 
-export default function DriverPage({driverId}: Props) {
+  const loader = useLoader(async () => {
+    if (!token) return null;
+    const route = await driverApi.getRouteInfo(token);
+    if (!route) throw new Error('failed to load driver info by token');
+    return route;
+  }, [token]);
+
+  useEffect(() => {
+    if (!refresher) return;
+    const listener = () => loader.reload();
+    refresher.addEventListener('orderUpdate', listener);
+    return () => {
+      refresher.removeEventListener('orderUpdate', listener);
+    };
+  }, [refresher]);
+
   return (
-    <>
-      <RouteHeader driverId={driverId} />
-      <RouteOverview driverId={driverId} />
-    </>
+    <LoadBoundary loader={loader} name="route dashboard">
+      {route => (
+        <>
+          <RouteHeader driver={route.driver} />
+          <RouteOverview orders={route.orders} mapLink={route.mapLink} />
+        </>
+      )}
+    </LoadBoundary>
   );
 }

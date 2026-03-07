@@ -1,47 +1,29 @@
-import {useContext, useEffect} from 'react';
-import {OrderRefreshContext} from '../OrderRefreshProvider';
-import {useLoader} from '~/util/query';
-import type {Driver} from '~/domain/objects';
-import {driverApi} from '~/api/endpoints/driver';
-import {batchApi} from '~/api/endpoints/batch';
+import type {Order} from '~/domain/objects';
 import RouteItem from './RouteItem';
-import LoadBoundary from '../LoadBoundary';
 import ReturnedButton from './ReturnedButton';
+import MapLink from './MapLink';
 
 interface Props {
-  driverId: Driver['id'];
+  orders: Order[] | null;
+  mapLink: string | null;
 }
 
-export default function RouteOverview({driverId}: Props) {
-  const refresher = useContext(OrderRefreshContext);
-
-  const loader = useLoader(async () => {
-    const batch = await driverApi.getBatch(driverId);
-    if (!batch) throw new Error('failed to read batch');
-    const orders = await batchApi.getOrders(batch.id);
-    if (!orders) throw new Error('failed to load orders');
-    return orders;
-  });
-
-  useEffect(() => {
-    if (!refresher) return;
-    const listener = () => loader.reload();
-    refresher.addEventListener('orderUpdate', listener);
-    return () => {
-      refresher.removeEventListener('orderUpdate', listener);
-    };
-  }, [refresher]);
-
+export default function RouteOverview({orders, mapLink}: Props) {
   return (
-    <main>
-      <ol>
-        <LoadBoundary loader={loader} name="orders">
-          {orders =>
-            orders.map(order => <RouteItem order={order} key={order.id.id} />)
-          }
-        </LoadBoundary>
-      </ol>
-      <ReturnedButton />
+    <main className="flex flex-col gap-5 text-center">
+      {orders ? (
+        <>
+          <MapLink link={mapLink} />
+          <ol className="flex flex-col gap-3">
+            {orders.map(order => (
+              <RouteItem order={order} key={order.id.id} />
+            ))}
+          </ol>
+          <ReturnedButton />
+        </>
+      ) : (
+        <p>There is no active batch</p>
+      )}
     </main>
   );
 }
