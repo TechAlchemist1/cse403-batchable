@@ -1,7 +1,8 @@
 import {Link} from 'react-router';
 
-const GLOBAL_TAILWIND =
-  'cursor-pointer text-center transition-all active:scale-95';
+const GLOBAL_TAILWIND = 'cursor-pointer text-center transition-all';
+
+const ENABLED_TAILWIND = 'active:scale-95';
 
 const BIG_TAILWIND = 'rounded-lg px-5 py-2.5';
 const SMALL_TAILWIND = 'rounded-md px-3 py-1.5 text-xs font-semibold';
@@ -15,12 +16,13 @@ type Color =
   | 'indigo'
   | 'purple';
 
-export type Style = Color | 'blank' | 'dark';
+export type Style = Color | 'blank' | 'dark' | 'disabled';
 
 const CUSTOM_TAILWIND: Record<Exclude<Style, Color>, string> = {
   dark: 'border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800',
   blank:
     'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800',
+  disabled: 'bg-gray-600 text-gray-300',
 };
 
 // Keep color classes static so Tailwind can detect and emit them.
@@ -37,7 +39,8 @@ const COLOR_TAILWIND: Record<Color, string> = {
 const getColorTailwind = (color: Color) => COLOR_TAILWIND[color];
 
 const getTailwind = (style: Style) => {
-  if (style === 'blank' || style === 'dark') return CUSTOM_TAILWIND[style];
+  if (style === 'blank' || style === 'dark' || style === 'disabled')
+    return CUSTOM_TAILWIND[style];
   return getColorTailwind(style);
 };
 
@@ -49,6 +52,7 @@ interface Props {
   href?: string;
   tw?: string;
   small?: boolean;
+  disabled?: boolean;
 }
 
 /**
@@ -72,7 +76,10 @@ export default function Button({
   small,
   children,
 }: React.PropsWithChildren<Props>) {
-  const styles = `${GLOBAL_TAILWIND} ${small ? SMALL_TAILWIND : BIG_TAILWIND} ${getTailwind(style)} ${tw ? ` ${tw}` : ''}`;
+  // if there's no possible interaction, disable it
+  const disabled = !onClick && !href && !to && !submit;
+  if (disabled) style = 'disabled';
+  const styles = `${GLOBAL_TAILWIND} ${disabled ? '' : ENABLED_TAILWIND} ${small ? SMALL_TAILWIND : BIG_TAILWIND} ${getTailwind(style)} ${tw ? ` ${tw}` : ''}`;
 
   const props = {
     onClick,
@@ -82,7 +89,7 @@ export default function Button({
 
   if (to) {
     return (
-      <Link to={to} {...props}>
+      <Link to={to} aria-disabled={disabled} {...props}>
         {children}
       </Link>
     );
@@ -90,14 +97,14 @@ export default function Button({
 
   if (href) {
     return (
-      <a href={href} {...props}>
+      <a href={href} aria-disabled={disabled} {...props}>
         {children}
       </a>
     );
   }
 
   return (
-    <button type={submit ? 'submit' : 'button'} {...props}>
+    <button type={submit ? 'submit' : 'button'} disabled={disabled} {...props}>
       {children}
     </button>
   );

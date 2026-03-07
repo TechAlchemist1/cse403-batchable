@@ -223,6 +223,7 @@ describe('Batch parsing', () => {
         route: '_p~iF~ps|U_ulLnnqC_mqNvxq`@',
         dispatchTime: '2026-01-30T01:30:00.000Z',
         expectedCompletionTime: '2026-01-30T01:30:00.000Z',
+        finished: false,
       },
       {
         id: {
@@ -238,6 +239,7 @@ describe('Batch parsing', () => {
         },
         dispatchTime: new Date('2026-01-30T01:30:00.000Z'),
         expectedCompletionTime: new Date('2026-01-30T01:30:00.000Z'),
+        finished: false,
       },
     );
   });
@@ -251,6 +253,7 @@ describe('Batch parsing', () => {
         route: 'Hello World! 1 2 3 4 5',
         dispatchTime: '2026-01-30T01:30:00.000Z',
         expectedCompletionTime: '2026-01-30T01:30:00.000Z',
+        finished: true,
       },
       {
         id: {
@@ -266,6 +269,7 @@ describe('Batch parsing', () => {
         },
         dispatchTime: new Date('2026-01-30T01:30:00.000Z'),
         expectedCompletionTime: new Date('2026-01-30T01:30:00.000Z'),
+        finished: true,
       },
     );
   });

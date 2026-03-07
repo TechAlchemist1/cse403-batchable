@@ -6,11 +6,17 @@ import {
   type Order,
   type Restaurant,
 } from '~/domain/objects';
+import {MS_PER_MINUTE} from '~/util/time';
 
+/**
+ * This data is used to populate the mock database when the app is being run in development (npm run dev).
+ * During testing, the database is initially empty.
+ */
 const restaurantId: Restaurant['id'] = {type: 'Restaurant', id: 1};
 const now = Date.now();
 
-const minutesFromNow = (minutes: number) => new Date(now + minutes * 60 * 1000);
+const minutesFromNow = (minutes: number) =>
+  new Date(now + minutes * MS_PER_MINUTE);
 
 export const initialDrivers: Driver[] = [
   {
@@ -69,6 +75,7 @@ export const initialBatches: Batch[] = [
     route: {encoded: 'iziaHtvkiVwKbS}O`G'},
     dispatchTime: minutesFromNow(-5),
     expectedCompletionTime: minutesFromNow(25),
+    finished: false,
   },
 ];
 

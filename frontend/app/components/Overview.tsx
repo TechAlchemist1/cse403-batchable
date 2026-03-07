@@ -1,12 +1,10 @@
-import {type ReactNode} from 'react';
 import type {DomainObject} from '~/domain/objects';
-import LoadError from './LoadError';
-import Loading from './Loading';
 import type {Loader} from '~/util/query';
+import LoadBoundary from './LoadBoundary';
 
 interface Props<T extends DomainObject> {
   title: string;
-  itemsLoader: Loader<T[] | null>;
+  itemsLoader: Loader<T[]>;
   renderItem: (item: T) => React.ReactElement;
 }
 
@@ -21,27 +19,20 @@ export default function OverviewSection<T extends DomainObject>({
   itemsLoader,
   renderItem,
 }: Props<T>) {
-  const {response: items, loaded} = itemsLoader;
-
-  let content: ReactNode = <Loading>Loading items...</Loading>;
-  if (loaded) {
-    content = items ? (
-      <ol className="space-y-4">
-        {items.map(item => (
-          <li key={item.id.id}>{renderItem(item)}</li>
-        ))}
-      </ol>
-    ) : (
-      <LoadError>Failed to load</LoadError>
-    );
-  }
-
   return (
     <section className="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800">
       <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
         {title}
       </h2>
-      {content}
+      <LoadBoundary loader={itemsLoader} name="items">
+        {items => (
+          <ol className="space-y-4">
+            {items.map(item => (
+              <li key={item.id.id}>{renderItem(item)}</li>
+            ))}
+          </ol>
+        )}
+      </LoadBoundary>
     </section>
   );
 }

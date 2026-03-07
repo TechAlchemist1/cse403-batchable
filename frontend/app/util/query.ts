@@ -27,7 +27,7 @@ type LoaderResult<T> =
  *  3. Returning non-null: This indicates that the data was successfully loaded
  */
 export function useLoader<T>(
-  loader: () => Promise<T>,
+  loader: () => Promise<T | null>,
   dependencies: React.DependencyList = [],
 ): Loader<T> {
   const [flag, reload] = useReducer(flag => !flag, false);

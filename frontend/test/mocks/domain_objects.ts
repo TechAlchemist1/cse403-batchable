@@ -11,6 +11,7 @@ import {
 } from '~/domain/objects';
 import * as json from '~/domain/json';
 import {db} from './api/common';
+import {MS_PER_MINUTE} from '~/util/time';
 
 export async function checkedCreate<T extends DomainObject>(
   api: CrudApi<T>,
@@ -90,12 +91,14 @@ export async function checkedCreateBatch(
   batchConfig: Partial<Batch> = {},
 ) {
   // note: this directly interfaces with the mock database, since there is no batching algorithm
+  const now = Date.now();
   const rawBatchId = db.batches.insert(
     json.batch.unparse({
       id: fakeId('Batch'),
       driver,
-      dispatchTime: new Date(),
-      expectedCompletionTime: new Date(Date.now() + 1e3),
+      dispatchTime: new Date(now - 5 * MS_PER_MINUTE),
+      expectedCompletionTime: new Date(now + 15 * MS_PER_MINUTE),
+      finished: false,
       route: {
         encoded: '19872AKJSDH1b3',
       },

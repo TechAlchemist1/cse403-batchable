@@ -5,6 +5,7 @@ import {StatusCodes} from 'http-status-codes';
 import type {DomainObject} from '~/domain/objects';
 import type {Resource} from '~/api/common';
 
+// we make the simplifying assumption, in this mock implementation, that driver tokens are always equal to driver ids
 export const db = {
   restaurants: new JSONTable(json.restaurant),
   orders: new JSONTable(json.order),
