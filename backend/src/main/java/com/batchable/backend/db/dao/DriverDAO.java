@@ -10,6 +10,8 @@ import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * Data Access Object for Driver table.
@@ -22,6 +24,13 @@ public class DriverDAO {
 
     // Spring-managed connection pool source
     private final DataSource dataSource;
+
+    // Thread-safety lock:
+    // - multiple readers can proceed together
+    // - writers are exclusive
+    private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
+    private final Lock readLock = rwLock.readLock();
+    private final Lock writeLock = rwLock.writeLock();
 
     /**
      * Constructor injection of DataSource.
@@ -43,18 +52,28 @@ public class DriverDAO {
                 "INSERT INTO Driver(restaurant_id, name, phone_number, on_shift) " +
                 "VALUES (?, ?, ?, ?) RETURNING id;";
 
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+        writeLock.lock();
+        try (Connection conn = dataSource.getConnection()) {
+            conn.setAutoCommit(false);
 
-            ps.setLong(1, restaurantId);
-            ps.setString(2, name);
-            ps.setString(3, phoneNumber);
-            ps.setBoolean(4, onShift);
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setLong(1, restaurantId);
+                ps.setString(2, name);
+                ps.setString(3, phoneNumber);
+                ps.setBoolean(4, onShift);
 
-            try (ResultSet rs = ps.executeQuery()) {
-                rs.next();
-                return rs.getLong("id");
+                try (ResultSet rs = ps.executeQuery()) {
+                    rs.next();
+                    long id = rs.getLong("id");
+                    conn.commit();
+                    return id;
+                }
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
             }
+        } finally {
+            writeLock.unlock();
         }
     }
 
@@ -68,6 +87,7 @@ public class DriverDAO {
                 "SELECT id, restaurant_id, name, phone_number, on_shift " +
                 "FROM Driver WHERE id = ?;";
 
+        readLock.lock();
         try (Connection conn = dataSource.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -84,6 +104,8 @@ public class DriverDAO {
                         rs.getBoolean("on_shift")
                 ));
             }
+        } finally {
+            readLock.unlock();
         }
     }
 
@@ -94,12 +116,21 @@ public class DriverDAO {
 
         final String sql = "UPDATE Driver SET on_shift = ? WHERE id = ?;";
 
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+        writeLock.lock();
+        try (Connection conn = dataSource.getConnection()) {
+            conn.setAutoCommit(false);
 
-            ps.setBoolean(1, onShift);
-            ps.setLong(2, driverId);
-            ps.executeUpdate();
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setBoolean(1, onShift);
+                ps.setLong(2, driverId);
+                ps.executeUpdate();
+                conn.commit();
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            }
+        } finally {
+            writeLock.unlock();
         }
     }
 
@@ -120,6 +151,7 @@ public class DriverDAO {
 
         List<Driver> out = new ArrayList<>();
 
+        readLock.lock();
         try (Connection conn = dataSource.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -136,6 +168,8 @@ public class DriverDAO {
                     ));
                 }
             }
+        } finally {
+            readLock.unlock();
         }
 
         return out;
@@ -153,14 +187,24 @@ public class DriverDAO {
         final String sql =
                 "UPDATE Driver SET name = ?, phone_number = ? WHERE id = ?;";
 
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+        writeLock.lock();
+        try (Connection conn = dataSource.getConnection()) {
+            conn.setAutoCommit(false);
 
-            ps.setString(1, name);
-            ps.setString(2, phoneNumber);
-            ps.setLong(3, driverId);
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setString(1, name);
+                ps.setString(2, phoneNumber);
+                ps.setLong(3, driverId);
 
-            return ps.executeUpdate() == 1;
+                boolean updated = ps.executeUpdate() == 1;
+                conn.commit();
+                return updated;
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            }
+        } finally {
+            writeLock.unlock();
         }
     }
 
@@ -172,11 +216,21 @@ public class DriverDAO {
 
         final String sql = "DELETE FROM Driver WHERE id = ?;";
 
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+        writeLock.lock();
+        try (Connection conn = dataSource.getConnection()) {
+            conn.setAutoCommit(false);
 
-            ps.setLong(1, driverId);
-            return ps.executeUpdate() == 1;
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setLong(1, driverId);
+                boolean deleted = ps.executeUpdate() == 1;
+                conn.commit();
+                return deleted;
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            }
+        } finally {
+            writeLock.unlock();
         }
     }
 
@@ -190,6 +244,7 @@ public class DriverDAO {
                 "SELECT 1 FROM Driver WHERE restaurant_id = ? " +
                 "AND on_shift = TRUE LIMIT 1;";
 
+        readLock.lock();
         try (Connection conn = dataSource.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -198,6 +253,8 @@ public class DriverDAO {
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next();
             }
+        } finally {
+            readLock.unlock();
         }
     }
 }

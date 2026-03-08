@@ -10,6 +10,8 @@ import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 @Repository
 public class RestaurantDAO {
@@ -17,27 +19,47 @@ public class RestaurantDAO {
     // Spring-managed connection pool
     private final DataSource dataSource;
 
+    // Thread-safety lock:
+    // - multiple readers can proceed together
+    // - writers are exclusive
+    private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
+    private final Lock readLock = rwLock.readLock();
+    private final Lock writeLock = rwLock.writeLock();
+
     public RestaurantDAO(DataSource dataSource) {
         this.dataSource = dataSource;
     }
 
     public long createRestaurant(String name, String location) throws SQLException {
         final String sql = "INSERT INTO Restaurant(name, location) VALUES (?, ?) RETURNING id;";
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
 
-            ps.setString(1, name);
-            ps.setString(2, location);
+        writeLock.lock();
+        try (Connection conn = dataSource.getConnection()) {
+            conn.setAutoCommit(false);
 
-            try (ResultSet rs = ps.executeQuery()) {
-                rs.next();
-                return rs.getLong("id");
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setString(1, name);
+                ps.setString(2, location);
+
+                try (ResultSet rs = ps.executeQuery()) {
+                    rs.next();
+                    long id = rs.getLong("id");
+                    conn.commit();
+                    return id;
+                }
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
             }
+        } finally {
+            writeLock.unlock();
         }
     }
 
     public Optional<Restaurant> getRestaurant(long id) throws SQLException {
         final String sql = "SELECT id, name, location FROM Restaurant WHERE id = ?;";
+
+        readLock.lock();
         try (Connection conn = dataSource.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -47,6 +69,8 @@ public class RestaurantDAO {
                 if (!rs.next()) return Optional.empty();
                 return Optional.of(mapRestaurant(rs));
             }
+        } finally {
+            readLock.unlock();
         }
     }
 
@@ -54,6 +78,7 @@ public class RestaurantDAO {
         final String sql = "SELECT id, name, location FROM Restaurant ORDER BY id;";
         List<Restaurant> out = new ArrayList<>();
 
+        readLock.lock();
         try (Connection conn = dataSource.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
@@ -61,6 +86,8 @@ public class RestaurantDAO {
             while (rs.next()) {
                 out.add(mapRestaurant(rs));
             }
+        } finally {
+            readLock.unlock();
         }
 
         return out;
@@ -68,29 +95,53 @@ public class RestaurantDAO {
 
     public boolean updateRestaurant(long restaurantId, String name, String location) throws SQLException {
         final String sql = "UPDATE Restaurant SET name = ?, location = ? WHERE id = ?;";
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
 
-            ps.setString(1, name);
-            ps.setString(2, location);
-            ps.setLong(3, restaurantId);
+        writeLock.lock();
+        try (Connection conn = dataSource.getConnection()) {
+            conn.setAutoCommit(false);
 
-            return ps.executeUpdate() == 1;
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setString(1, name);
+                ps.setString(2, location);
+                ps.setLong(3, restaurantId);
+
+                boolean updated = ps.executeUpdate() == 1;
+                conn.commit();
+                return updated;
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            }
+        } finally {
+            writeLock.unlock();
         }
     }
 
     public boolean deleteRestaurant(long restaurantId) throws SQLException {
         final String sql = "DELETE FROM Restaurant WHERE id = ?;";
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
 
-            ps.setLong(1, restaurantId);
-            return ps.executeUpdate() == 1;
+        writeLock.lock();
+        try (Connection conn = dataSource.getConnection()) {
+            conn.setAutoCommit(false);
+
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setLong(1, restaurantId);
+                boolean deleted = ps.executeUpdate() == 1;
+                conn.commit();
+                return deleted;
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            }
+        } finally {
+            writeLock.unlock();
         }
     }
 
     public boolean restaurantExists(long restaurantId) throws SQLException {
         final String sql = "SELECT 1 FROM Restaurant WHERE id = ? LIMIT 1;";
+
+        readLock.lock();
         try (Connection conn = dataSource.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -99,11 +150,15 @@ public class RestaurantDAO {
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next();
             }
+        } finally {
+            readLock.unlock();
         }
     }
 
     public boolean restaurantExistsByName(String name) throws SQLException {
         final String sql = "SELECT 1 FROM Restaurant WHERE name = ? LIMIT 1;";
+
+        readLock.lock();
         try (Connection conn = dataSource.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -112,11 +167,15 @@ public class RestaurantDAO {
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next();
             }
+        } finally {
+            readLock.unlock();
         }
     }
 
     public boolean restaurantExistsByNameExcludingId(long excludedRestaurantId, String name) throws SQLException {
         final String sql = "SELECT 1 FROM Restaurant WHERE name = ? AND id <> ? LIMIT 1;";
+
+        readLock.lock();
         try (Connection conn = dataSource.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -126,6 +185,8 @@ public class RestaurantDAO {
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next();
             }
+        } finally {
+            readLock.unlock();
         }
     }
 
