@@ -162,7 +162,7 @@ public class DriverService {
     Driver driver = getDriverByToken(token);
     Optional<List<Order>> orders = getDriverBatchOrders(driver.id);
     Optional<String> routeLink = Optional.empty();
-    if (!orders.isEmpty()) {
+    if (orders.isPresent()) {
       Restaurant restaurant = restaurantService.getRestaurant(driver.restaurantId);
       List<Order> unboxedOrders = orders.orElseThrow();
       routeLink = Optional.of(getRouteLink(unboxedOrders, restaurant.location));

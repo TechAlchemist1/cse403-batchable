@@ -11,7 +11,7 @@ interface Props {
 export default function RouteOverview({orders, mapLink}: Props) {
   return (
     <main className="flex flex-col gap-5 text-center">
-      {orders ? (
+      {orders && mapLink ? (
         <>
           <MapLink link={mapLink} />
           <ol className="flex flex-col gap-3">

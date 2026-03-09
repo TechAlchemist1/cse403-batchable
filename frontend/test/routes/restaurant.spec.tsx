@@ -91,7 +91,6 @@ async function renderLoadedRestaurantPage() {
 describe('Restaurant page', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(window, 'alert').mockImplementation(() => {});
     seedRestaurantData();

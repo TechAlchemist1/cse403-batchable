@@ -6,7 +6,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import {describe, it, expect, vi} from 'vitest';
+import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {menuApi} from '~/api/endpoints/menu';
 import {restaurantApi} from '~/api/endpoints/restaurant';
 import AddOrderModal from '~/components/dashboard/AddOrderModal';
@@ -89,8 +89,11 @@ async function tryCreateOrder(
 }
 
 describe('<AddOrderModal>', () => {
-  vi.spyOn(window, 'alert').mockImplementation(() => {});
-  vi.spyOn(console, 'log').mockImplementation(() => {});
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(window, 'alert').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
 
   it('has the input elements', async () => {
     const restaurant = await checkedCreate(restaurantApi, getFakeRestaurant());

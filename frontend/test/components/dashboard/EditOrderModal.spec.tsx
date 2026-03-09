@@ -9,7 +9,7 @@ import {
 import {http} from 'msw';
 import {badRequest, endpoint} from 'test/mocks/api/common';
 import {server} from 'test/mocks/api/server';
-import {describe, it, expect, vi} from 'vitest';
+import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {orderApi} from '~/api/endpoints/order';
 import {restaurantApi} from '~/api/endpoints/restaurant';
 import EditOrderModal from '~/components/dashboard/EditOrderModal';
@@ -64,8 +64,11 @@ const renderModal = (order: Order) => {
 };
 
 describe('<EditOrderModal>', () => {
-  vi.spyOn(window, 'alert').mockImplementation(() => {});
-  vi.spyOn(console, 'log').mockImplementation(() => {});
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(window, 'alert').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
 
   it('contains appropriate UI', async () => {
     const order = await createOrder();

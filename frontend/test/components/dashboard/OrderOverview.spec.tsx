@@ -1,4 +1,4 @@
-import {loaderMock} from 'test/mocks/query';
+import {mockFailure, mockNoResponse, mockSuccess} from 'test/mocks/query';
 import {describe, it, expect} from 'vitest';
 import {render, screen} from '@testing-library/react';
 import type {Order} from '~/domain/objects';
@@ -38,13 +38,7 @@ describe('<OrderOverview>', () => {
   });
 
   it('stays loading when there is no restaurant', async () => {
-    loaderMock.handleLoader = async load => {
-      await load();
-      return {
-        loaded: false,
-        response: null,
-      };
-    };
+    mockNoResponse();
     render(<OrderOverview />);
 
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
@@ -52,29 +46,14 @@ describe('<OrderOverview>', () => {
 
   it('shows an error when loading fails', async () => {
     server.use(http.get(endpoint('/restaurant/1/orders'), () => badRequest()));
-    loaderMock.handleLoader = async load => {
-      try {
-        await load();
-        expect.fail('loading should fail');
-      } catch {
-        return {
-          loaded: true,
-          response: null,
-        };
-      }
-    };
+    mockFailure();
     await renderOverview([]);
 
     expect(await screen.findByText(/failed to load/i)).toBeInTheDocument();
   });
 
   it('shows orders', async () => {
-    loaderMock.handleLoader = async load => {
-      return {
-        loaded: true,
-        response: await load(),
-      };
-    };
+    mockSuccess();
     await renderOverview([{}, {}, {}]);
 
     expect(await screen.findByText('Order #1')).toBeInTheDocument();

@@ -3,7 +3,7 @@ import {RestaurantContext} from './RestaurantProvider';
 import type {Restaurant} from '~/domain/objects';
 import {DriverTokenContext} from './DriverTokenContext';
 
-class RefreshMonitor extends EventTarget {
+export class RefreshMonitor extends EventTarget {
   private eventSource: EventSource;
 
   private constructor(path: string) {

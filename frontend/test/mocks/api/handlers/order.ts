@@ -14,7 +14,7 @@ import * as json from '~/domain/json';
 if (!globalThis.EventSource) {
   // this allows the server-side portion of the MSW SSE mock to run without error
   Object.defineProperty(globalThis, 'EventSource', {
-    value: class EventSource {},
+    value: class EventSource extends EventTarget {},
   });
 }
 
@@ -103,7 +103,7 @@ export const orderHandlers = [
 
     return noContent();
   }),
-  sse<{refresh: string}>('/sse/orders/:id', async ({client}) => {
+  sse<{refresh: string}>(endpoint('/sse/orders/:id'), async ({client}) => {
     db.orders.addEventListener('change', () => {
       client.send({
         event: 'refresh',
@@ -111,12 +111,15 @@ export const orderHandlers = [
       });
     });
   }),
-  sse<{refresh: string}>('/sse/orders/token/:token', async ({client}) => {
-    db.orders.addEventListener('change', () => {
-      client.send({
-        event: 'refresh',
-        data: '<<this should never matter/driver>>',
+  sse<{refresh: string}>(
+    endpoint('/sse/orders/token/:token'),
+    async ({client}) => {
+      db.orders.addEventListener('change', () => {
+        client.send({
+          event: 'refresh',
+          data: '<<this should never matter/driver>>',
+        });
       });
-    });
-  }),
+    },
+  ),
 ];
