@@ -11,8 +11,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * Data Access Object for Batch table.
@@ -24,13 +22,6 @@ public class BatchDAO {
 
   // Spring-managed connection pool source
   private final DataSource dataSource;
-
-  // Thread-safety lock:
-  // - multiple readers can proceed together
-  // - writers are exclusive
-  private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
-  private final Lock readLock = rwLock.readLock();
-  private final Lock writeLock = rwLock.writeLock();
 
   /**
    * Constructor injection of DataSource. Spring will provide this automatically.
@@ -58,7 +49,6 @@ public class BatchDAO {
         "INSERT INTO Batch(driver_id, route, dispatch_time, completion_time, finished) "
             + "VALUES (?, ?, ?, ?, ?) RETURNING id;";
 
-    writeLock.lock();
     try (Connection conn = dataSource.getConnection()) {
       conn.setAutoCommit(false);
 
@@ -79,8 +69,6 @@ public class BatchDAO {
         conn.rollback();
         throw e;
       }
-    } finally {
-      writeLock.unlock();
     }
   }
 
@@ -89,7 +77,6 @@ public class BatchDAO {
     final String sql = "SELECT id, driver_id, route, dispatch_time, completion_time, finished "
         + "FROM Batch WHERE id = ?;";
 
-    readLock.lock();
     try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -101,19 +88,14 @@ public class BatchDAO {
         }
         return Optional.of(mapBatch(rs));
       }
-    } finally {
-      readLock.unlock();
     }
   }
 
   /**
-   * Removes all unfinished batches from the database.
-   * This is a destructive cleanup operation.
+   * Removes all unfinished batches from the database. This is a destructive cleanup operation.
    *
-   * This method operates strictly at the persistence layer:
-   * No business logic is applied
-   * No events are emitted
-   * No external systems (e.g., Twilio) are notified
+   * This method operates strictly at the persistence layer: No business logic is applied No events
+   * are emitted No external systems (e.g., Twilio) are notified
    *
    * Callers are responsible for coordinating any higher-level effects (such as notifying drivers or
    * refreshing in-memory state).
@@ -122,7 +104,6 @@ public class BatchDAO {
 
     final String sql = "DELETE FROM Batch WHERE finished = false;";
 
-    writeLock.lock();
     try (Connection conn = dataSource.getConnection()) {
       conn.setAutoCommit(false);
 
@@ -133,8 +114,6 @@ public class BatchDAO {
         conn.rollback();
         throw e;
       }
-    } finally {
-      writeLock.unlock();
     }
   }
 
@@ -143,10 +122,9 @@ public class BatchDAO {
    * that drivers have at most one unfinished batch at a time.
    */
   public Optional<Batch> getBatchForDriver(long driverId) throws SQLException {
-      final String sql = "SELECT id, driver_id, route, dispatch_time, completion_time, finished "
-      + "FROM Batch WHERE driver_id = ? AND finished = ? ORDER BY id DESC LIMIT 1;";
+    final String sql = "SELECT id, driver_id, route, dispatch_time, completion_time, finished "
+        + "FROM Batch WHERE driver_id = ? AND finished = ? ORDER BY id DESC LIMIT 1;";
 
-    readLock.lock();
     try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -159,8 +137,6 @@ public class BatchDAO {
         }
         return Optional.of(mapBatch(rs));
       }
-    } finally {
-      readLock.unlock();
     }
   }
 
@@ -171,7 +147,6 @@ public class BatchDAO {
 
     List<Batch> out = new ArrayList<>();
 
-    readLock.lock();
     try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -184,8 +159,6 @@ public class BatchDAO {
       }
 
       return out;
-    } finally {
-      readLock.unlock();
     }
   }
 
@@ -199,7 +172,6 @@ public class BatchDAO {
     final String sql =
         "UPDATE Batch SET route = ?, dispatch_time = ?, completion_time = ? WHERE id = ?;";
 
-    writeLock.lock();
     try (Connection conn = dataSource.getConnection()) {
       conn.setAutoCommit(false);
 
@@ -216,8 +188,6 @@ public class BatchDAO {
         conn.rollback();
         throw e;
       }
-    } finally {
-      writeLock.unlock();
     }
   }
 
@@ -225,7 +195,6 @@ public class BatchDAO {
   public boolean markBatchFinished(long batchId) throws SQLException {
     final String sql = "UPDATE Batch SET finished = true WHERE id = ?;";
 
-    writeLock.lock();
     try (Connection conn = dataSource.getConnection()) {
       conn.setAutoCommit(false);
 
@@ -238,8 +207,6 @@ public class BatchDAO {
         conn.rollback();
         throw e;
       }
-    } finally {
-      writeLock.unlock();
     }
   }
 
@@ -247,7 +214,6 @@ public class BatchDAO {
   public boolean setBatchFinished(long batchId, boolean finished) throws SQLException {
     final String sql = "UPDATE Batch SET finished = ? WHERE id = ?;";
 
-    writeLock.lock();
     try (Connection conn = dataSource.getConnection()) {
       conn.setAutoCommit(false);
 
@@ -261,8 +227,6 @@ public class BatchDAO {
         conn.rollback();
         throw e;
       }
-    } finally {
-      writeLock.unlock();
     }
   }
 
@@ -270,7 +234,6 @@ public class BatchDAO {
   public boolean updateBatchDriver(long batchId, long driverId) throws SQLException {
     final String sql = "UPDATE Batch SET driver_id = ? WHERE id = ?;";
 
-    writeLock.lock();
     try (Connection conn = dataSource.getConnection()) {
       conn.setAutoCommit(false);
 
@@ -285,8 +248,6 @@ public class BatchDAO {
         conn.rollback();
         throw e;
       }
-    } finally {
-      writeLock.unlock();
     }
   }
 
@@ -294,7 +255,6 @@ public class BatchDAO {
   public boolean deleteBatch(long batchId) throws SQLException {
     final String sql = "DELETE FROM Batch WHERE id = ?;";
 
-    writeLock.lock();
     try (Connection conn = dataSource.getConnection()) {
       conn.setAutoCommit(false);
 
@@ -307,8 +267,6 @@ public class BatchDAO {
         conn.rollback();
         throw e;
       }
-    } finally {
-      writeLock.unlock();
     }
   }
 
@@ -316,7 +274,6 @@ public class BatchDAO {
   public boolean batchExists(long batchId) throws SQLException {
     final String sql = "SELECT 1 FROM Batch WHERE id = ? LIMIT 1;";
 
-    readLock.lock();
     try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -325,8 +282,6 @@ public class BatchDAO {
       try (ResultSet rs = ps.executeQuery()) {
         return rs.next();
       }
-    } finally {
-      readLock.unlock();
     }
   }
 
@@ -334,7 +289,6 @@ public class BatchDAO {
   public boolean batchExistsForDriver(long driverId) throws SQLException {
     final String sql = "SELECT 1 FROM Batch WHERE driver_id = ? LIMIT 1;";
 
-    readLock.lock();
     try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -343,8 +297,6 @@ public class BatchDAO {
       try (ResultSet rs = ps.executeQuery()) {
         return rs.next();
       }
-    } finally {
-      readLock.unlock();
     }
   }
 

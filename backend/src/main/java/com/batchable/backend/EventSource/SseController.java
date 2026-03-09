@@ -34,6 +34,8 @@ public class SseController {
     if (emitterList == null) {
       return;
     }
+    System.out.println("SSE EMITTER FOR RID " + restaurantId + " NUM EMITTERS " + emitterList.size());
+
     for (SseEmitter emitter : emitterList) {
       try {
         emitter.send(SseEmitter.event().name("refresh").data("")); // empty payload, just a signal

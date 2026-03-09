@@ -11,8 +11,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * Data access object for the Order entity. Provides CRUD and query operations on the "Order" table
@@ -23,13 +21,6 @@ public class OrderDAO {
 
   // Spring-managed connection pool source
   private final DataSource dataSource;
-
-  // Thread-safety lock:
-  // - multiple readers can proceed together
-  // - writers are exclusive
-  private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
-  private final Lock readLock = rwLock.readLock();
-  private final Lock writeLock = rwLock.writeLock();
 
   /**
    * Constructs an OrderDAO with the given DataSource.
@@ -100,7 +91,6 @@ public class OrderDAO {
         + " state, high_priority, batch_id" + ") VALUES ("
         + " ?, ?, ?::json, ?, ?, ?, ?::order_state, ?, ?" + ") RETURNING id;";
 
-    writeLock.lock();
     try (Connection conn = dataSource.getConnection()) {
       conn.setAutoCommit(false);
 
@@ -130,8 +120,6 @@ public class OrderDAO {
         conn.rollback();
         throw e;
       }
-    } finally {
-      writeLock.unlock();
     }
   }
 
@@ -148,7 +136,6 @@ public class OrderDAO {
         "SELECT id, restaurant_id, destination, item_names, initial_time, delivery_time, cooked_time, "
             + "       state, high_priority, batch_id " + "FROM \"Order\" WHERE id = ?;";
 
-    readLock.lock();
     try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -159,8 +146,6 @@ public class OrderDAO {
           return Optional.empty();
         return Optional.of(mapOrder(rs));
       }
-    } finally {
-      readLock.unlock();
     }
   }
 
@@ -175,7 +160,6 @@ public class OrderDAO {
   public boolean updateOrderState(long orderId, Order.State newState) throws SQLException {
     final String sql = "UPDATE \"Order\" SET state = ?::order_state WHERE id = ?;";
 
-    writeLock.lock();
     try (Connection conn = dataSource.getConnection()) {
       conn.setAutoCommit(false);
 
@@ -189,8 +173,6 @@ public class OrderDAO {
         conn.rollback();
         throw e;
       }
-    } finally {
-      writeLock.unlock();
     }
   }
 
@@ -205,7 +187,6 @@ public class OrderDAO {
   public boolean updateOrderCookedTime(long orderId, Instant cookedTime) throws SQLException {
     final String sql = "UPDATE \"Order\" SET cooked_time = ? WHERE id = ?;";
 
-    writeLock.lock();
     try (Connection conn = dataSource.getConnection()) {
       conn.setAutoCommit(false);
 
@@ -219,8 +200,6 @@ public class OrderDAO {
         conn.rollback();
         throw e;
       }
-    } finally {
-      writeLock.unlock();
     }
   }
 
@@ -235,7 +214,6 @@ public class OrderDAO {
   public boolean updateOrderDeliveryTime(long orderId, Instant deliveryTime) throws SQLException {
     final String sql = "UPDATE \"Order\" SET delivery_time = ? WHERE id = ?;";
 
-    writeLock.lock();
     try (Connection conn = dataSource.getConnection()) {
       conn.setAutoCommit(false);
 
@@ -249,8 +227,6 @@ public class OrderDAO {
         conn.rollback();
         throw e;
       }
-    } finally {
-      writeLock.unlock();
     }
   }
 
@@ -265,7 +241,6 @@ public class OrderDAO {
   public boolean setOrderHighPriority(long orderId, boolean highPriority) throws SQLException {
     final String sql = "UPDATE \"Order\" SET high_priority = ? WHERE id = ?;";
 
-    writeLock.lock();
     try (Connection conn = dataSource.getConnection()) {
       conn.setAutoCommit(false);
 
@@ -279,8 +254,6 @@ public class OrderDAO {
         conn.rollback();
         throw e;
       }
-    } finally {
-      writeLock.unlock();
     }
   }
 
@@ -303,7 +276,6 @@ public class OrderDAO {
         + "initial_time = ?, cooked_time = ?, delivery_time = ?, "
         + "batch_id = NULL, high_priority = ? WHERE id = ?;";
 
-    writeLock.lock();
     try (Connection conn = dataSource.getConnection()) {
       conn.setAutoCommit(false);
 
@@ -322,8 +294,6 @@ public class OrderDAO {
         conn.rollback();
         throw e;
       }
-    } finally {
-      writeLock.unlock();
     }
   }
 
@@ -337,7 +307,6 @@ public class OrderDAO {
   public boolean deleteOrder(long orderId) throws SQLException {
     final String sql = "DELETE FROM \"Order\" WHERE id = ?;";
 
-    writeLock.lock();
     try (Connection conn = dataSource.getConnection()) {
       conn.setAutoCommit(false);
 
@@ -350,8 +319,6 @@ public class OrderDAO {
         conn.rollback();
         throw e;
       }
-    } finally {
-      writeLock.unlock();
     }
   }
 
@@ -371,7 +338,6 @@ public class OrderDAO {
 
     List<Order> out = new ArrayList<>();
 
-    readLock.lock();
     try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -382,8 +348,6 @@ public class OrderDAO {
           out.add(mapOrder(rs));
         }
       }
-    } finally {
-      readLock.unlock();
     }
 
     return out;
@@ -405,7 +369,6 @@ public class OrderDAO {
 
     List<Order> out = new ArrayList<>();
 
-    readLock.lock();
     try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -416,8 +379,6 @@ public class OrderDAO {
           out.add(mapOrder(rs));
         }
       }
-    } finally {
-      readLock.unlock();
     }
 
     return out;
@@ -448,7 +409,6 @@ public class OrderDAO {
     final String sql =
         "SELECT 1 FROM \"Order\" WHERE restaurant_id = ? AND state <> 'DELIVERED' LIMIT 1;";
 
-    readLock.lock();
     try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -457,8 +417,6 @@ public class OrderDAO {
       try (ResultSet rs = ps.executeQuery()) {
         return rs.next();
       }
-    } finally {
-      readLock.unlock();
     }
   }
 
@@ -473,7 +431,6 @@ public class OrderDAO {
   public boolean updateOrderBatchId(long orderId, long batchId) throws SQLException {
     final String sql = "UPDATE \"Order\" SET batch_id = ? WHERE id = ?;";
 
-    writeLock.lock();
     try (Connection conn = dataSource.getConnection()) {
       conn.setAutoCommit(false);
 
@@ -487,8 +444,6 @@ public class OrderDAO {
         conn.rollback();
         throw e;
       }
-    } finally {
-      writeLock.unlock();
     }
   }
 
@@ -502,7 +457,6 @@ public class OrderDAO {
   public boolean clearOrderBatchId(long orderId) throws SQLException {
     final String sql = "UPDATE \"Order\" SET batch_id = NULL WHERE id = ?;";
 
-    writeLock.lock();
     try (Connection conn = dataSource.getConnection()) {
       conn.setAutoCommit(false);
 
@@ -515,8 +469,6 @@ public class OrderDAO {
         conn.rollback();
         throw e;
       }
-    } finally {
-      writeLock.unlock();
     }
   }
 }

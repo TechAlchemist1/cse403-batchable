@@ -10,21 +10,12 @@ import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 @Repository
 public class MenuItemDAO {
 
   // Spring-managed connection pool source
   private final DataSource dataSource;
-
-  // Thread-safety lock:
-  // - multiple readers can proceed together
-  // - writers are exclusive
-  private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
-  private final Lock readLock = rwLock.readLock();
-  private final Lock writeLock = rwLock.writeLock();
 
   public MenuItemDAO(DataSource dataSource) {
     this.dataSource = dataSource;
@@ -33,7 +24,6 @@ public class MenuItemDAO {
   public long createMenuItem(long restaurantId, String name) throws SQLException {
     final String sql = "INSERT INTO \"menu_item\"(restaurant_id, name) VALUES (?, ?) RETURNING id;";
 
-    writeLock.lock();
     try (Connection conn = dataSource.getConnection()) {
       conn.setAutoCommit(false);
 
@@ -51,15 +41,12 @@ public class MenuItemDAO {
         conn.rollback();
         throw e;
       }
-    } finally {
-      writeLock.unlock();
     }
   }
 
   public Optional<MenuItem> getMenuItem(long menuItemId) throws SQLException {
     final String sql = "SELECT id, restaurant_id, name FROM \"menu_item\" WHERE id = ?;";
 
-    readLock.lock();
     try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -72,16 +59,12 @@ public class MenuItemDAO {
         return Optional
             .of(new MenuItem(rs.getLong("id"), rs.getLong("restaurant_id"), rs.getString("name")));
       }
-    } finally {
-      readLock.unlock();
     }
   }
 
   public void updateMenuItem(long menuItemId, long restaurantId, String name) throws SQLException {
-    final String sql =
-        "UPDATE \"menu_item\" SET name = ? WHERE id = ? AND restaurant_id = ?;";
+    final String sql = "UPDATE \"menu_item\" SET name = ? WHERE id = ? AND restaurant_id = ?;";
 
-    writeLock.lock();
     try (Connection conn = dataSource.getConnection()) {
       conn.setAutoCommit(false);
 
@@ -100,8 +83,6 @@ public class MenuItemDAO {
         conn.rollback();
         throw e;
       }
-    } finally {
-      writeLock.unlock();
     }
   }
 
@@ -111,7 +92,6 @@ public class MenuItemDAO {
 
     List<MenuItem> out = new ArrayList<>();
 
-    readLock.lock();
     try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -123,8 +103,6 @@ public class MenuItemDAO {
               new MenuItem(rs.getLong("id"), rs.getLong("restaurant_id"), rs.getString("name")));
         }
       }
-    } finally {
-      readLock.unlock();
     }
 
     return out;
@@ -134,7 +112,6 @@ public class MenuItemDAO {
   public boolean deleteMenuItem(long menuItemId) throws SQLException {
     final String sql = "DELETE FROM \"menu_item\" WHERE id = ?;";
 
-    writeLock.lock();
     try (Connection conn = dataSource.getConnection()) {
       conn.setAutoCommit(false);
 
@@ -147,8 +124,6 @@ public class MenuItemDAO {
         conn.rollback();
         throw e;
       }
-    } finally {
-      writeLock.unlock();
     }
   }
 
@@ -157,7 +132,6 @@ public class MenuItemDAO {
       throws SQLException {
     final String sql = "SELECT 1 FROM \"menu_item\" WHERE restaurant_id = ? AND name = ? LIMIT 1;";
 
-    readLock.lock();
     try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -167,8 +141,6 @@ public class MenuItemDAO {
       try (ResultSet rs = ps.executeQuery()) {
         return rs.next();
       }
-    } finally {
-      readLock.unlock();
     }
   }
 }

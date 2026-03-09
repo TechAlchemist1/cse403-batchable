@@ -10,8 +10,6 @@ import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * Data Access Object for Driver table.
@@ -23,13 +21,6 @@ public class DriverDAO {
 
   // Spring-managed connection pool source
   private final DataSource dataSource;
-
-  // Thread-safety lock:
-  // - multiple readers can proceed together
-  // - writers are exclusive
-  private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
-  private final Lock readLock = rwLock.readLock();
-  private final Lock writeLock = rwLock.writeLock();
 
   /**
    * Constructor injection of DataSource. Spring will provide this automatically.
@@ -47,7 +38,6 @@ public class DriverDAO {
     final String sql = "INSERT INTO Driver(restaurant_id, name, phone_number, on_shift) "
         + "VALUES (?, ?, ?, ?) RETURNING id;";
 
-    writeLock.lock();
     try (Connection conn = dataSource.getConnection()) {
       conn.setAutoCommit(false);
 
@@ -67,8 +57,6 @@ public class DriverDAO {
         conn.rollback();
         throw e;
       }
-    } finally {
-      writeLock.unlock();
     }
   }
 
@@ -80,7 +68,6 @@ public class DriverDAO {
     final String sql =
         "SELECT id, restaurant_id, name, phone_number, on_shift " + "FROM Driver WHERE id = ?;";
 
-    readLock.lock();
     try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -93,8 +80,6 @@ public class DriverDAO {
         return Optional.of(new Driver(rs.getLong("id"), rs.getLong("restaurant_id"),
             rs.getString("name"), rs.getString("phone_number"), rs.getBoolean("on_shift")));
       }
-    } finally {
-      readLock.unlock();
     }
   }
 
@@ -148,7 +133,6 @@ public class DriverDAO {
 
     final String sql = "UPDATE Driver SET on_shift = ? WHERE id = ?;";
 
-    writeLock.lock();
     try (Connection conn = dataSource.getConnection()) {
       conn.setAutoCommit(false);
 
@@ -161,8 +145,6 @@ public class DriverDAO {
         conn.rollback();
         throw e;
       }
-    } finally {
-      writeLock.unlock();
     }
   }
 
@@ -170,7 +152,6 @@ public class DriverDAO {
    * Lists all drivers for a given restaurant. If onShiftOnly is true, filters to only on-shift
    * drivers.
    */
-
   public List<Driver> listDriversForRestaurant(long restaurantId, boolean onShiftOnly)
       throws SQLException {
 
@@ -180,7 +161,6 @@ public class DriverDAO {
 
     List<Driver> out = new ArrayList<>();
 
-    readLock.lock();
     try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -192,8 +172,6 @@ public class DriverDAO {
               rs.getString("phone_number"), rs.getBoolean("on_shift")));
         }
       }
-    } finally {
-      readLock.unlock();
     }
 
     return out;
@@ -206,7 +184,6 @@ public class DriverDAO {
 
     final String sql = "UPDATE Driver SET name = ?, phone_number = ? WHERE id = ?;";
 
-    writeLock.lock();
     try (Connection conn = dataSource.getConnection()) {
       conn.setAutoCommit(false);
 
@@ -222,8 +199,6 @@ public class DriverDAO {
         conn.rollback();
         throw e;
       }
-    } finally {
-      writeLock.unlock();
     }
   }
 
@@ -234,7 +209,6 @@ public class DriverDAO {
 
     final String sql = "DELETE FROM Driver WHERE id = ?;";
 
-    writeLock.lock();
     try (Connection conn = dataSource.getConnection()) {
       conn.setAutoCommit(false);
 
@@ -247,8 +221,6 @@ public class DriverDAO {
         conn.rollback();
         throw e;
       }
-    } finally {
-      writeLock.unlock();
     }
   }
 
@@ -260,7 +232,6 @@ public class DriverDAO {
     final String sql =
         "SELECT 1 FROM Driver WHERE restaurant_id = ? " + "AND on_shift = TRUE LIMIT 1;";
 
-    readLock.lock();
     try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -269,8 +240,6 @@ public class DriverDAO {
       try (ResultSet rs = ps.executeQuery()) {
         return rs.next();
       }
-    } finally {
-      readLock.unlock();
     }
   }
 }
