@@ -9,7 +9,7 @@
     "typecheck": "react-router typegen && tsc",
     "lint": "gts lint",
     "clean": "gts clean",
-    "compile": "react-router typegen && tsc",
+    "compile": "tsc && vite build",
     "fix": "gts fix",
     "prepare": "npm run compile",
     "pretest": "npm run compile",
