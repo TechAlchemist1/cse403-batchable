@@ -837,37 +837,6 @@ class RestaurantBatchingManagerTest {
     verify(publisher, times(3)).refreshOrderData(RESTAURANT_ID);
   }
 
-  /** delayOrder updates both cooked and delivery times by the additional time. */
-  @Test
-  void delayOrder_updatesBothTimes2() {
-    Order order = createOrder(1L, State.COOKING, Instant.parse("2025-01-01T10:00:00Z"),
-        Instant.parse("2025-01-01T10:30:00Z"));
-
-    List<TentativeBatch> tentative = new ArrayList<>();
-    tentative.add(createTentativeBatch(List.of(order), Instant.now().minusSeconds(10)));
-    Queue<ReadyBatch> ready = new LinkedList<>();
-    List<Batch> active = new ArrayList<>();
-    Batches customBatches = new Batches(tentative, ready, active);
-
-    RestaurantBatchingManager mgr = new RestaurantBatchingManager(RESTAURANT_ID, ADDRESS, publisher,
-        batchingAlgorithm, routeService, dbOrderService, driverService, restaurantService,
-        twilioManager, customBatches);
-
-    Order updatedOrder =
-        createOrder(1L, State.COOKING, order.cookedTime.plusSeconds(ADDITIONAL_COOK_TIME_SEC),
-            order.deliveryTime.plusSeconds(ADDITIONAL_COOK_TIME_SEC));
-    when(dbOrderService.getOrder(1L)).thenReturn(updatedOrder);
-
-    RestaurantBatchingManager spyMgr = spy(mgr);
-    doReturn(new LinkedList<>()).when(spyMgr).getReadyDrivers(anyInt());
-
-    spyMgr.checkExpiredBatches(UPDATE_MILLIS);
-    verifyOrderDelayed(order, order.deliveryTime, order.cookedTime);
-
-    verify(dbOrderService).updateOrderDeliveryTime(eq(1L), instantCaptor.capture());
-    verify(publisher, times(3)).refreshOrderData(RESTAURANT_ID);
-  }
-
   /** Full end‑to‑end test with multiple batches, expired and future, and driver assignment. */
   @Test
   void checkExpiredBatches_fullFlow() throws InvalidRouteException {

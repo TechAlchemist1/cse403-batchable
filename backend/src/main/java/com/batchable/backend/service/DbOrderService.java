@@ -121,7 +121,6 @@ public class DbOrderService {
       orderDAO.updateOrderState(orderId, next);
 
       // Push update to frontend via WebSocket
-      System.out.println("REFRESHING SSE ORDER DATA");
       publisher.refreshOrderData(order.restaurantId);
 
     } catch (SQLException e) {
