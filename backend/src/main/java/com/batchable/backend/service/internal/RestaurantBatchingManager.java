@@ -65,6 +65,11 @@ public class RestaurantBatchingManager {
    * @param publisher websocket publisher to notify clients
    * @param batchingAlgorithm algorithm for forming batches
    * @param routeService service for computing route polylines and duration
+   * @param dbOrderService service for database order operations
+   * @param driverService service for driver availability
+   * @param restaurantService service for restaurant data
+   * @param twilioManager service for Twilio notifications
+   * @param batches initial batches container (may be null)
    */
   public RestaurantBatchingManager(long restaurantId, String restaurantAddress,
       SsePublisher publisher, BatchingAlgorithm batchingAlgorithm, RouteService routeService,
@@ -90,10 +95,20 @@ public class RestaurantBatchingManager {
   public static class ReadyBatch {
     private final List<Order> batch;
 
+    /**
+     * Creates a ready batch from a list of orders.
+     *
+     * @param batch the orders that form this batch (will be copied)
+     */
     public ReadyBatch(List<Order> batch) {
       this.batch = new ArrayList<Order>(batch);
     }
 
+    /**
+     * Returns a defensive copy of the orders in this batch.
+     *
+     * @return a new list containing the batch orders
+     */
     public List<Order> getBatch() {
       return new ArrayList<Order>(batch);
     }
@@ -183,6 +198,7 @@ public class RestaurantBatchingManager {
    * for the executor to produce a consistent snapshot.
    *
    * @return the Batches object holding tentative, ready, and active batches
+   * @throws RuntimeException if interrupted or if the executor task fails
    */
   public Batches getBatches() {
     try {
@@ -208,6 +224,8 @@ public class RestaurantBatchingManager {
   /**
    * Initializes the orders for this restaurant by fetching all orders from the restaurant service,
    * remaking each order via the database order service, and then adding them to the local state.
+   *
+   * @throws RuntimeException if initialization fails due to interruption or execution error
    */
   private void initializeOrders() {
     try {
@@ -226,13 +244,21 @@ public class RestaurantBatchingManager {
     }
   }
 
-  /** Handles an active batch changing by calling the appropriate dependencies. */
+  /**
+   * Handles an active batch changing by calling the appropriate dependencies.
+   *
+   * @param batchId the ID of the batch that changed
+   */
   private void handleActiveBatchChange(long batchId) {
     twilioManager.handleBatchChange(batchId, restaurantAddress);
     updated = true;
   }
 
-  /** Handles a new batch becoming active by calling the appropriate dependencies. */
+  /**
+   * Handles a new batch becoming active by calling the appropriate dependencies.
+   *
+   * @param batchId the ID of the newly active batch
+   */
   private void handleNewActiveBatch(long batchId) {
     twilioManager.handleNewBatch(batchId, restaurantAddress);
     updated = true;
@@ -248,6 +274,13 @@ public class RestaurantBatchingManager {
     executor.submit(() -> doAddOrder(order));
   }
 
+  /**
+   * Internal implementation of addOrder.
+   *
+   * @param order the order to add
+   * @throws IllegalArgumentException if the order is not in COOKING state or its cookedTime is not
+   *         in the future
+   */
   private void doAddOrder(Order order) {
     if (order.state != State.COOKING || order.cookedTime.isBefore(Instant.now())) {
       throw new IllegalArgumentException("Orders must be COOKING and have a"
@@ -261,12 +294,18 @@ public class RestaurantBatchingManager {
    * Removes an order from restaurant's batches by ID. This operation is asynchronous.
    *
    * @param order the order to remove
-   * @throws IllegalArgumentException if the order id is not found
+   * @throws IllegalArgumentException if the order id is not found in any batch
    */
   public void removeOrder(Order order) {
     executor.submit(() -> doRemoveOrder(order));
   }
 
+  /**
+   * Internal implementation of removeOrder.
+   *
+   * @param order the order to remove
+   * @throws IllegalArgumentException if the order id is not found in any batch
+   */
   private void doRemoveOrder(Order order) {
     if (order.batchId != null) {
       // in active batch
@@ -287,6 +326,12 @@ public class RestaurantBatchingManager {
     executor.submit(() -> doUpdateOrder(orderId, rebatchIfTentative));
   }
 
+  /**
+   * Internal implementation of updateOrder.
+   *
+   * @param orderId the ID of the order to update
+   * @param rebatchIfTentative whether to rebatch the order if it is in a tentative batch
+   */
   private void doUpdateOrder(Long orderId, boolean rebatchIfTentative) {
     Order order = dbOrderService.getOrder(orderId);
     if (order.batchId != null) {
@@ -354,11 +399,17 @@ public class RestaurantBatchingManager {
    * the single‑thread executor and runs asynchronously.
    *
    * @param updateMillis how much to delay delivery times for unassigned ready batches
+   * @return Future representing completion of the check
    */
   public Future<?> checkExpiredBatches(final long updateMillis) {
     return executor.submit(() -> doCheckExpiredBatches(updateMillis));
   }
 
+  /**
+   * Internal implementation of periodic update.
+   *
+   * @param updateMillis how much to delay delivery times for unassigned ready batches
+   */
   private void doCheckExpiredBatches(final long updateMillis) {
     Instant now = Instant.now();
 
@@ -448,6 +499,7 @@ public class RestaurantBatchingManager {
    * update cycle.
    *
    * @param updateMillis amount of time to delay delivery for each order
+   * @throws IllegalStateException if an order in a ready batch is not in COOKED state
    */
   private void delayRemainingReadyBatches(long updateMillis) {
     for (ReadyBatch readyBatch : batches.readyBatches) {
@@ -506,6 +558,7 @@ public class RestaurantBatchingManager {
    * @param readyBatch the batch of orders ready for dispatch
    * @param driver the assigned driver
    * @return the persisted Batch
+   * @throws RuntimeException if the route cannot be computed (wraps InvalidRouteException)
    */
   private Batch createAndPersistBatch(ReadyBatch readyBatch, Driver driver) {
     List<String> stops = new ArrayList<>();
@@ -537,6 +590,7 @@ public class RestaurantBatchingManager {
    *
    * @param orders the orders to advance in state and associate with the batch
    * @param batchId the ID of the batch to assign to each order
+   * @throws IllegalStateException if any order is not in COOKED state before assignment
    */
   private void updateBatchOrders(List<Order> orders, Long batchId) {
     for (int i = 0; i < orders.size(); i++) {
@@ -561,6 +615,7 @@ public class RestaurantBatchingManager {
    *
    * @param orders current batch orders (mutated in-place)
    * @param toBeReAdded accumulator for delayed orders
+   * @throws IllegalStateException if an order has a state beyond COOKED
    */
   private void removeUncookedOrders(List<Order> orders, List<Order> toBeReAdded) {
     for (int j = orders.size() - 1; j >= 0; j--) {
@@ -593,16 +648,31 @@ public class RestaurantBatchingManager {
     dbOrderService.updateOrderDeliveryTime(order.id, newDeliveryTime);
   }
 
-  // returns the Instant 'millis' milliseconds after the given time
+  /**
+   * Returns the Instant 'millis' milliseconds after the given time.
+   *
+   * @param time the base instant
+   * @param millis the number of milliseconds to add
+   * @return the new Instant
+   */
   private Instant millisAfter(Instant time, long millis) {
     return time.plus(Duration.ofMillis(millis));
   }
 
-  // returns the Instant 'seconds' seconds after the given time
+  /**
+   * Returns the Instant 'seconds' seconds after the given time.
+   *
+   * @param time the base instant
+   * @param seconds the number of seconds to add
+   * @return the new Instant
+   */
   private Instant secondsAfter(Instant time, long seconds) {
     return millisAfter(time, seconds * 1000);
   }
 
+  /**
+   * Prints debug information about all batches to System.out.
+   */
   public void debugPrintBatches() {
     System.out.println("\n\n\n");
     Instant now = Instant.now();
@@ -654,7 +724,13 @@ public class RestaurantBatchingManager {
     }
   }
 
-  /** Returns minutes from 'now' to 'time' as a formatted string with one decimal place. */
+  /**
+   * Returns minutes from 'now' to 'time' as a formatted string with one decimal place.
+   *
+   * @param now the reference time
+   * @param time the target time, may be null
+   * @return formatted string representing minutes difference, or "null" if time is null
+   */
   private String formatMinutes(Instant now, Instant time) {
     if (time == null)
       return "null";
