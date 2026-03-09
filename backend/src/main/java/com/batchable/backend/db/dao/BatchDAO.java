@@ -1,6 +1,5 @@
 package com.batchable.backend.db.dao;
 
-import com.batchable.backend.BackendApplication;
 import com.batchable.backend.db.models.Batch;
 
 import javax.sql.DataSource;
@@ -12,6 +11,8 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * Data Access Object for Batch table.
@@ -23,6 +24,13 @@ public class BatchDAO {
 
   // Spring-managed connection pool source
   private final DataSource dataSource;
+
+  // Thread-safety lock:
+  // - multiple readers can proceed together
+  // - writers are exclusive
+  private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
+  private final Lock readLock = rwLock.readLock();
+  private final Lock writeLock = rwLock.writeLock();
 
   /**
    * Constructor injection of DataSource. Spring will provide this automatically.
@@ -50,19 +58,29 @@ public class BatchDAO {
         "INSERT INTO Batch(driver_id, route, dispatch_time, completion_time, finished) "
             + "VALUES (?, ?, ?, ?, ?) RETURNING id;";
 
-    try (Connection conn = dataSource.getConnection();
-        PreparedStatement ps = conn.prepareStatement(sql)) {
+    writeLock.lock();
+    try (Connection conn = dataSource.getConnection()) {
+      conn.setAutoCommit(false);
 
-      ps.setLong(1, driverId);
-      ps.setString(2, routePolyline);
-      ps.setTimestamp(3, ts(dispatchTime));
-      ps.setTimestamp(4, ts(completionTime));
-      ps.setBoolean(5, false); // new batches start unfinished
+      try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        ps.setLong(1, driverId);
+        ps.setString(2, routePolyline);
+        ps.setTimestamp(3, ts(dispatchTime));
+        ps.setTimestamp(4, ts(completionTime));
+        ps.setBoolean(5, false); // new batches start unfinished
 
-      try (ResultSet rs = ps.executeQuery()) {
-        rs.next();
-        return rs.getLong("id");
+        try (ResultSet rs = ps.executeQuery()) {
+          rs.next();
+          long id = rs.getLong("id");
+          conn.commit();
+          return id;
+        }
+      } catch (SQLException e) {
+        conn.rollback();
+        throw e;
       }
+    } finally {
+      writeLock.unlock();
     }
   }
 
@@ -71,16 +89,20 @@ public class BatchDAO {
     final String sql = "SELECT id, driver_id, route, dispatch_time, completion_time, finished "
         + "FROM Batch WHERE id = ?;";
 
+    readLock.lock();
     try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
 
       ps.setLong(1, batchId);
 
       try (ResultSet rs = ps.executeQuery()) {
-        if (!rs.next())
+        if (!rs.next()) {
           return Optional.empty();
+        }
         return Optional.of(mapBatch(rs));
       }
+    } finally {
+      readLock.unlock();
     }
   }
 
@@ -92,7 +114,7 @@ public class BatchDAO {
    * No business logic is applied
    * No events are emitted
    * No external systems (e.g., Twilio) are notified
-   * 
+   *
    * Callers are responsible for coordinating any higher-level effects (such as notifying drivers or
    * refreshing in-memory state).
    */
@@ -100,14 +122,19 @@ public class BatchDAO {
 
     final String sql = "DELETE FROM Batch WHERE finished = false;";
 
-    // Execute the delete in a single SQL statement.
-    // This operation is atomic at the database level.
-    try (Connection conn = dataSource.getConnection();
-        PreparedStatement ps = conn.prepareStatement(sql)) {
+    writeLock.lock();
+    try (Connection conn = dataSource.getConnection()) {
+      conn.setAutoCommit(false);
 
-      // We intentionally ignore the number of rows deleted.
-      // Callers typically only care that the cleanup occurred.
-      ps.executeUpdate();
+      try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        ps.executeUpdate();
+        conn.commit();
+      } catch (SQLException e) {
+        conn.rollback();
+        throw e;
+      }
+    } finally {
+      writeLock.unlock();
     }
   }
 
@@ -116,9 +143,10 @@ public class BatchDAO {
    * that drivers have at most one unfinished batch at a time.
    */
   public Optional<Batch> getBatchForDriver(long driverId) throws SQLException {
-    final String sql = "SELECT id, driver_id, route, dispatch_time, completion_time, finished "
-        + "FROM Batch WHERE driver_id = ? and finished = ? LIMIT 1;";
+      final String sql = "SELECT id, driver_id, route, dispatch_time, completion_time, finished "
+      + "FROM Batch WHERE driver_id = ? AND finished = ? ORDER BY id DESC LIMIT 1;";
 
+    readLock.lock();
     try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -126,10 +154,13 @@ public class BatchDAO {
       ps.setBoolean(2, false);
 
       try (ResultSet rs = ps.executeQuery()) {
-        if (!rs.next())
+        if (!rs.next()) {
           return Optional.empty();
+        }
         return Optional.of(mapBatch(rs));
       }
+    } finally {
+      readLock.unlock();
     }
   }
 
@@ -140,6 +171,7 @@ public class BatchDAO {
 
     List<Batch> out = new ArrayList<>();
 
+    readLock.lock();
     try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -150,9 +182,11 @@ public class BatchDAO {
           out.add(mapBatch(rs));
         }
       }
-    }
 
-    return out;
+      return out;
+    } finally {
+      readLock.unlock();
+    }
   }
 
   /**
@@ -165,15 +199,25 @@ public class BatchDAO {
     final String sql =
         "UPDATE Batch SET route = ?, dispatch_time = ?, completion_time = ? WHERE id = ?;";
 
-    try (Connection conn = dataSource.getConnection();
-        PreparedStatement ps = conn.prepareStatement(sql)) {
+    writeLock.lock();
+    try (Connection conn = dataSource.getConnection()) {
+      conn.setAutoCommit(false);
 
-      ps.setString(1, routePolyline);
-      ps.setTimestamp(2, ts(dispatchTime));
-      ps.setTimestamp(3, ts(completionTime));
-      ps.setLong(4, batchId);
+      try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        ps.setString(1, routePolyline);
+        ps.setTimestamp(2, ts(dispatchTime));
+        ps.setTimestamp(3, ts(completionTime));
+        ps.setLong(4, batchId);
 
-      return ps.executeUpdate() == 1;
+        boolean updated = ps.executeUpdate() == 1;
+        conn.commit();
+        return updated;
+      } catch (SQLException e) {
+        conn.rollback();
+        throw e;
+      }
+    } finally {
+      writeLock.unlock();
     }
   }
 
@@ -181,11 +225,21 @@ public class BatchDAO {
   public boolean markBatchFinished(long batchId) throws SQLException {
     final String sql = "UPDATE Batch SET finished = true WHERE id = ?;";
 
-    try (Connection conn = dataSource.getConnection();
-        PreparedStatement ps = conn.prepareStatement(sql)) {
+    writeLock.lock();
+    try (Connection conn = dataSource.getConnection()) {
+      conn.setAutoCommit(false);
 
-      ps.setLong(1, batchId);
-      return ps.executeUpdate() == 1;
+      try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        ps.setLong(1, batchId);
+        boolean updated = ps.executeUpdate() == 1;
+        conn.commit();
+        return updated;
+      } catch (SQLException e) {
+        conn.rollback();
+        throw e;
+      }
+    } finally {
+      writeLock.unlock();
     }
   }
 
@@ -193,12 +247,22 @@ public class BatchDAO {
   public boolean setBatchFinished(long batchId, boolean finished) throws SQLException {
     final String sql = "UPDATE Batch SET finished = ? WHERE id = ?;";
 
-    try (Connection conn = dataSource.getConnection();
-        PreparedStatement ps = conn.prepareStatement(sql)) {
+    writeLock.lock();
+    try (Connection conn = dataSource.getConnection()) {
+      conn.setAutoCommit(false);
 
-      ps.setBoolean(1, finished);
-      ps.setLong(2, batchId);
-      return ps.executeUpdate() == 1;
+      try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        ps.setBoolean(1, finished);
+        ps.setLong(2, batchId);
+        boolean updated = ps.executeUpdate() == 1;
+        conn.commit();
+        return updated;
+      } catch (SQLException e) {
+        conn.rollback();
+        throw e;
+      }
+    } finally {
+      writeLock.unlock();
     }
   }
 
@@ -206,13 +270,23 @@ public class BatchDAO {
   public boolean updateBatchDriver(long batchId, long driverId) throws SQLException {
     final String sql = "UPDATE Batch SET driver_id = ? WHERE id = ?;";
 
-    try (Connection conn = dataSource.getConnection();
-        PreparedStatement ps = conn.prepareStatement(sql)) {
+    writeLock.lock();
+    try (Connection conn = dataSource.getConnection()) {
+      conn.setAutoCommit(false);
 
-      ps.setLong(1, driverId);
-      ps.setLong(2, batchId);
+      try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        ps.setLong(1, driverId);
+        ps.setLong(2, batchId);
 
-      return ps.executeUpdate() == 1;
+        boolean updated = ps.executeUpdate() == 1;
+        conn.commit();
+        return updated;
+      } catch (SQLException e) {
+        conn.rollback();
+        throw e;
+      }
+    } finally {
+      writeLock.unlock();
     }
   }
 
@@ -220,11 +294,21 @@ public class BatchDAO {
   public boolean deleteBatch(long batchId) throws SQLException {
     final String sql = "DELETE FROM Batch WHERE id = ?;";
 
-    try (Connection conn = dataSource.getConnection();
-        PreparedStatement ps = conn.prepareStatement(sql)) {
+    writeLock.lock();
+    try (Connection conn = dataSource.getConnection()) {
+      conn.setAutoCommit(false);
 
-      ps.setLong(1, batchId);
-      return ps.executeUpdate() == 1;
+      try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        ps.setLong(1, batchId);
+        boolean deleted = ps.executeUpdate() == 1;
+        conn.commit();
+        return deleted;
+      } catch (SQLException e) {
+        conn.rollback();
+        throw e;
+      }
+    } finally {
+      writeLock.unlock();
     }
   }
 
@@ -232,6 +316,7 @@ public class BatchDAO {
   public boolean batchExists(long batchId) throws SQLException {
     final String sql = "SELECT 1 FROM Batch WHERE id = ? LIMIT 1;";
 
+    readLock.lock();
     try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -240,6 +325,8 @@ public class BatchDAO {
       try (ResultSet rs = ps.executeQuery()) {
         return rs.next();
       }
+    } finally {
+      readLock.unlock();
     }
   }
 
@@ -247,6 +334,7 @@ public class BatchDAO {
   public boolean batchExistsForDriver(long driverId) throws SQLException {
     final String sql = "SELECT 1 FROM Batch WHERE driver_id = ? LIMIT 1;";
 
+    readLock.lock();
     try (Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(sql)) {
 
@@ -255,6 +343,8 @@ public class BatchDAO {
       try (ResultSet rs = ps.executeQuery()) {
         return rs.next();
       }
+    } finally {
+      readLock.unlock();
     }
   }
 

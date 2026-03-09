@@ -1,8 +1,9 @@
 package com.batchable.backend.service;
 
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -14,49 +15,56 @@ import com.batchable.backend.twilio.TwilioManager;
 import jakarta.annotation.PostConstruct;
 
 /**
- * Service that coordinates order batching for all restaurants.
+ * Service responsible for coordinating order batching across all restaurants.
  *
- * Responsibilities: - Maintains a batching manager per restaurant. - Routes incoming orders to the
- * appropriate restaurant manager. - Exposes listener registration APIs for batch updates and
- * activation. - Periodically checks all restaurants for expired tentative batches.
+ * Responsibilities: - Maintains one RestaurantBatchingManager per restaurant. - Routes order events
+ * to the appropriate manager. - Periodically checks for expired tentative batches.
  *
- * The actual batching logic is handled by RestaurantBatchingManager instances.
+ * This class does not implement batching logic itself; it delegates that responsibility to
+ * RestaurantBatchingManager instances.
  */
 @Service
 public class BatchingManager {
 
+  /** Handles sending SMS notifications related to batches. */
   private final TwilioManager twilioManager;
 
+  /** Provides database access for orders. */
   private final DbOrderService dbOrderService;
 
-  // Publishes updates to clients when batches change
+  /** Publishes server-sent events to connected clients. */
   private final SsePublisher publisher;
 
-  // Algorithm used to form and update tentative batches
+  /** Algorithm implementation used for computing batches. */
   private final BatchingAlgorithm batchingAlgorithm;
 
-  // Service for retrieving restaurant information
+  /** Service for retrieving restaurant information. */
   private final RestaurantService restaurantService;
 
-  // Service for computing routes and durations
+  /** Service responsible for route calculations. */
   private final RouteService routeService;
 
-  // Service for retrieving driver information
+  /** Service responsible for driver management. */
   private final DriverService driverService;
 
-  // Map of restaurant ID to its batching manager
-  private final Map<Long, RestaurantBatchingManager> restaurantManagers = new HashMap<>();
+  /**
+   * Thread-safe map of restaurant ID to its corresponding batching manager.
+   */
+  private final Map<Long, RestaurantBatchingManager> restaurantManagers = new ConcurrentHashMap<>();
 
+  /** Interval (in milliseconds) between batch expiration checks. */
   public static final long UPDATE_INCREMENTS_MILLIS = 5000;
 
   /**
-   * Constructs the batching manager.
+   * Constructs the batching manager service.
    *
-   * @param publisher websocket publisher
-   * @param batchingAlgorithm algorithm for batching orders
-   * @param restaurantService service for restaurant data
-   * @param routeService service for route calculations
-   * @param orderService service for order and batch operations
+   * @param publisher publisher used to send SSE updates
+   * @param batchingAlgorithm algorithm used to compute optimal batches
+   * @param restaurantService service used to retrieve restaurant data
+   * @param routeService service used to compute routes for batches
+   * @param dbOrderService service used to access order data
+   * @param driverService service used to manage drivers
+   * @param twilioManager manager used to send SMS notifications
    */
   public BatchingManager(SsePublisher publisher, BatchingAlgorithm batchingAlgorithm,
       RestaurantService restaurantService, RouteService routeService, DbOrderService dbOrderService,
@@ -70,10 +78,16 @@ public class BatchingManager {
     this.twilioManager = twilioManager;
   }
 
-  /** Initializes the managers corresponding to pre-populated data */
+  /**
+   * Initializes batching managers after the service is constructed.
+   *
+   * This method: - Clears unfinished batches from previous runs. - Creates a batching manager for
+   * each restaurant currently in the system.
+   */
   @PostConstruct
   private void initialize() {
     dbOrderService.removeAllUnfinishedBatches();
+
     List<Restaurant> restaurants = restaurantService.getAllRestaurants();
     for (Restaurant restaurant : restaurants) {
       addManager(restaurant.id);
@@ -81,117 +95,117 @@ public class BatchingManager {
   }
 
   /**
-   * Retrieves the batching manager for a restaurant, throwing an exception if it does not exist.
+   * Retrieves the batching manager for a given restaurant.
    *
-   * @param restaurantId the restaurant's ID
-   * @return the batching manager for the restaurant
-   * @throws IllegalArgumentException if no batching manager corresponds to the ID
+   * @param restaurantId the ID of the restaurant
+   * @return the RestaurantBatchingManager responsible for the restaurant
+   * @throws IllegalArgumentException if the manager does not exist
    */
   private RestaurantBatchingManager getManager(long restaurantId) {
-    if (!restaurantManagers.containsKey(restaurantId)) {
+    RestaurantBatchingManager manager = restaurantManagers.get(restaurantId);
+    if (manager == null) {
       throw new IllegalArgumentException("Cannot get RestaurantBatchingManager for id "
-          + restaurantId + "because it does not exist.");
+          + restaurantId + " because it does not exist.");
     }
-    return restaurantManagers.get(restaurantId);
+    return manager;
   }
 
   /**
-   * Adds a new restaurant manager for the given restaurant ID. Creates a RestaurantBatchingManager
-   * instance using the restaurant's address and stores it in the internal map.
+   * Creates and registers a batching manager for a restaurant.
    *
-   * @param restaurantId the ID of the restaurant to add
-   * @throws IllegalArgumentException if a manager for that restaurant already exists
+   * Thread-safe: uses putIfAbsent to prevent duplicate managers.
+   *
+   * @param restaurantId the ID of the restaurant
+   * @throws IllegalArgumentException if a manager for this restaurant already exists
    */
   public void addManager(long restaurantId) {
-    if (restaurantManagers.containsKey(restaurantId)) {
+    Restaurant restaurant = restaurantService.getRestaurant(restaurantId);
+    String address = restaurant.location;
+
+    RestaurantBatchingManager newManager =
+        new RestaurantBatchingManager(restaurantId, address, publisher, batchingAlgorithm,
+            routeService, dbOrderService, driverService, restaurantService, twilioManager, null);
+
+    RestaurantBatchingManager existing = restaurantManagers.putIfAbsent(restaurantId, newManager);
+    if (existing != null) {
       throw new IllegalArgumentException("Cannot add RestaurantBatchingManager for id "
           + restaurantId + " because it already exists.");
     }
-    Restaurant restaurant = restaurantService.getRestaurant(restaurantId);
-    String address = restaurant.location;
-    restaurantManagers.put(restaurantId,
-        new RestaurantBatchingManager(restaurantId, address, publisher, batchingAlgorithm,
-            routeService, dbOrderService, driverService, restaurantService, twilioManager,
-            null));
   }
 
   /**
-   * Updates the address of an existing restaurant manager. The change is propagated to the
-   * associated RestaurantBatchingManager.
+   * Updates the address associated with a restaurant manager.
    *
-   * @param restaurantId
-   * @param restaurant the restaurant to update
-   * @throws IllegalArgumentException if no manager exists for the given restaurant ID
+   * @param restaurant the restaurant with the updated address
+   * @throws IllegalArgumentException if the manager does not exist
    */
   public void updateManagerAddress(Restaurant restaurant) {
-    long restaurantId = restaurant.id;
-    String restaurantAddress = restaurant.location;
-    if (!restaurantManagers.containsKey(restaurantId)) {
-      throw new IllegalArgumentException("Cannot update RestaurantBatchingManager for id "
-          + restaurantId + " because it does not exist.");
-    }
-    restaurantManagers.get(restaurantId).setRestaurantAddress(restaurantAddress);
+    getManager(restaurant.id).setRestaurantAddress(restaurant.location);
   }
 
   /**
-   * Removes the restaurant manager for the given restaurant ID.
+   * Removes the batching manager for a restaurant.
    *
-   * @param restaurantId the ID of the restaurant to remove
-   * @throws IllegalArgumentException if no manager exists for the given restaurant ID
+   * @param restaurantId the ID of the restaurant
+   * @throws IllegalArgumentException if the manager does not exist
    */
   public void removeManager(long restaurantId) {
-    if (!restaurantManagers.containsKey(restaurantId)) {
+    RestaurantBatchingManager removed = restaurantManagers.remove(restaurantId);
+    if (removed == null) {
       throw new IllegalArgumentException("Cannot remove RestaurantBatchingManager for id "
           + restaurantId + " because it does not exist.");
     }
-    restaurantManagers.remove(restaurantId);
+
+    removed.shutdown();
   }
 
   /**
-   * Adds an order to the appropriate restaurant batching manager.
+   * Adds a new order to the batching system.
+   *
+   * The order is routed to the batching manager responsible for the corresponding restaurant.
    *
    * @param order the order to add
+   * @throws IllegalArgumentException if the restaurant manager does not exist
    */
   public void addOrder(Order order) {
-    long restaurantId = order.restaurantId;
-    getManager(restaurantId).addOrder(order);
+    getManager(order.restaurantId).addOrder(order);
   }
 
   /**
-   * Removes an order from the appropriate restaurant batching manager by ID.
+   * Removes an order from the batching system.
    *
    * @param order the order to remove
-   * @throws IllegalArgumentException if the order id is not found
+   * @throws IllegalArgumentException if the restaurant manager does not exist
    */
   public void removeOrder(Order order) {
     getManager(order.restaurantId).removeOrder(order);
   }
 
   /**
-   * Updates an existing order and forwards the update to the batching manager for the order's
-   * restaurant.
-   *
-   * If rebatchIfTentative is true and the order is currently part of a tentative batch, the order
-   * will be removed and re-added so that batching constraints are re-evaluated. Otherwise, the
-   * order is updated without rebatching.
+   * Updates an order and optionally triggers re-batching.
    *
    * @param orderId the ID of the order to update
-   * @param rebatchIfTentative whether to rebatch the order if it is currently part of a tentative
-   *        batch
+   * @param rebatchIfTentative whether re-batching should occur if the batch containing the order is
+   *        still tentative
+   * @throws IllegalArgumentException if the restaurant manager does not exist
    */
   public void updateOrder(Long orderId, boolean rebatchIfTentative) {
     Order order = dbOrderService.getOrder(orderId);
-    long restaurantId = order.restaurantId;
-    getManager(restaurantId).updateOrder(orderId, rebatchIfTentative);
+    getManager(order.restaurantId).updateOrder(orderId, rebatchIfTentative);
   }
 
   /**
-   * Scheduled task that checks for expired tentative batches in all restaurants. Delegates
-   * expiration handling to the restaurant-specific batching managers.
+   * Periodic scheduled task that checks all restaurant managers for expired tentative batches.
+   *
+   * A snapshot of the managers is taken to avoid issues if managers are added or removed during
+   * iteration.
+   *
+   * @return void
    */
   @Scheduled(fixedDelay = UPDATE_INCREMENTS_MILLIS)
   public void checkExpiredBatches() {
-    for (RestaurantBatchingManager manager : restaurantManagers.values()) {
+    List<RestaurantBatchingManager> managers = new ArrayList<>(restaurantManagers.values());
+    for (RestaurantBatchingManager manager : managers) {
       manager.checkExpiredBatches(UPDATE_INCREMENTS_MILLIS);
     }
   }
