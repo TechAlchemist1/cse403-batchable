@@ -20,10 +20,10 @@ export default function DriverPage() {
 
   useEffect(() => {
     if (!refresher) return;
-    const listener = () => loader.reload();
-    refresher.addEventListener('orderUpdate', listener);
+    const onUpdate = () => loader.reload();
+    refresher.addEventListener('orderUpdate', onUpdate);
     return () => {
-      refresher.removeEventListener('orderUpdate', listener);
+      refresher.removeEventListener('orderUpdate', onUpdate);
     };
   }, [refresher]);
 
