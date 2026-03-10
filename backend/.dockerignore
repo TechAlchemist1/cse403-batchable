@@ -1,0 +1,14 @@
+# ignore build output and local Maven repository
+target
+.mvn
+
+# OS files
+**/.DS_Store
+**/Thumbs.db
+
+# IDE/project files
+.idea
+*.iml
+
+# logs
+*.log
