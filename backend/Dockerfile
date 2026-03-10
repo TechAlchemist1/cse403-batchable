@@ -24,4 +24,4 @@ ENV PORT=8080
 EXPOSE ${PORT}
 
 # run the jar
-ENTRYPOINT ["java","-jar","/app/app.jar"]
+ENTRYPOINT ["sh","-c","java -jar /app/app.jar --server.port=$PORT"]
