@@ -10,6 +10,15 @@ Install node.js via the [node.js](https://nodejs.org/en)
 Download JDK 17 [here](https://www.oracle.com/java/technologies/javase/jdk17-archive-downloads.html)\
 Download Docker Desktop [here](https://www.docker.com/products/docker-desktop/)
 
+The repository includes a `Dockerfile` for the **backend** service and a corresponding entry in `docker-compose.yml`. You can build and run the entire stack with `docker compose up --build` from the project root; the backend will be available on port 8080.
+
+> **Deploying to cloud platforms**
+> If you push the backend image to a service like Render or Heroku, make sure
+> the service knows which port to listen on. The Dockerfile now defines
+> `ENV PORT=8080` and exposes `${PORT}`; some hosts still require you to
+> explicitly set the port in their UI. See
+> https://render.com/docs/web-services#port-binding for details.
+
 ## Database (Local Development)
 
 Make sure you have Docker Desktop installed and running, and at the bottom left it says engine is running

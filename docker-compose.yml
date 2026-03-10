@@ -40,6 +40,20 @@ services:
       timeout: 3s
       retries: 20
 
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    # map the application port so you can reach it from your host
+    ports:
+      - "8080:8080"
+    # the backend needs the database to be up first
+    depends_on:
+      - db
+    # load the same environment variables used by the run script
+    env_file:
+      - ./vars.env
+
 # Named volumes live outside containers
 # Docker manages them automatically
 volumes:

@@ -19,7 +19,9 @@ WORKDIR /app
 COPY --from=build /workspace/target/*.jar app.jar
 
 # expose the port that the Spring Boot app listens on
-EXPOSE 8080
+# some platforms (Render, Heroku, etc.) look for a PORT env var
+ENV PORT=8080
+EXPOSE ${PORT}
 
 # run the jar
 ENTRYPOINT ["java","-jar","/app/app.jar"]
